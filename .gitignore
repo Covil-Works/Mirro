@@ -1,0 +1,16 @@
+# Rust build artifacts
+/target/
+
+# Configuration generated locally
+config.json
+
+# Downloaded tools bundle (optional to commit or ignore)
+/tools/
+*.zip
+
+# Visual Studio / Windows
+*.pdb
+*.ilk
+.vs/
+thumbs.db
+desktop.ini

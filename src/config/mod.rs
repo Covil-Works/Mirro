@@ -1,0 +1,73 @@
+use std::collections::HashMap;
+use std::fs;
+use std::path::PathBuf;
+use serde::{Deserialize, Serialize};
+use tracing::{error, info};
+
+#[derive(Debug, Serialize, Deserialize, Default, Clone)]
+pub struct AppConfig {
+    #[serde(default)]
+    pub aliases: HashMap<String, String>,
+}
+
+pub struct ConfigManager;
+
+impl ConfigManager {
+    fn config_path() -> PathBuf {
+        if let Some(proj_dirs) = directories::ProjectDirs::from("com", "Mirro", "Mirro") {
+            let config_dir = proj_dirs.config_dir();
+            let _ = fs::create_dir_all(config_dir);
+            config_dir.join("config.json")
+        } else {
+            PathBuf::from("config.json")
+        }
+    }
+
+    pub fn load() -> AppConfig {
+        let path = Self::config_path();
+        if path.exists() {
+            if let Ok(content) = fs::read_to_string(&path) {
+                if let Ok(cfg) = serde_json::from_str::<AppConfig>(&content) {
+                    return cfg;
+                }
+            }
+        }
+        AppConfig::default()
+    }
+
+    pub fn save(config: &AppConfig) {
+        let path = Self::config_path();
+        if let Ok(serialized) = serde_json::to_string_pretty(config) {
+            if let Err(e) = fs::write(&path, serialized) {
+                error!("Falha ao salvar configuração em {:?}: {:?}", path, e);
+            } else {
+                info!("Configuração salva com sucesso em {:?}", path);
+            }
+        }
+    }
+
+    pub fn get_alias(serial: &str) -> Option<String> {
+        let cfg = Self::load();
+        cfg.aliases.get(serial).cloned()
+    }
+
+    pub fn set_alias(serial: &str, alias: &str) {
+        let mut cfg = Self::load();
+        cfg.aliases.insert(serial.to_string(), alias.trim().to_string());
+        Self::save(&cfg);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_config_serialization() {
+        let mut cfg = AppConfig::default();
+        cfg.aliases.insert("SERIAL123".to_string(), "Meu Galaxy".to_string());
+        let json = serde_json::to_string(&cfg).unwrap();
+        let decoded: AppConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.aliases.get("SERIAL123").unwrap(), "Meu Galaxy");
+    }
+}

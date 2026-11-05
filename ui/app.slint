@@ -1,0 +1,650 @@
+import { Button, LineEdit, ScrollView } from "std-widgets.slint";
+
+export struct DeviceCardData {
+    serial: string,
+    model: string,
+    display_name: string,
+    status_text: string,
+    status_message: string,
+    is_ready: bool,
+    is_unauthorized: bool,
+    is_mirroring: bool,
+}
+
+component NavButton inherits Rectangle {
+    in property <string> label;
+    in property <string> icon_symbol;
+    in property <bool> active: true;
+    callback clicked();
+
+    border-radius: 8px;
+    background: ta.has-hover ? #2e384d : #1e2638;
+    border-width: 1px;
+    border-color: #3b455b;
+    height: 38px;
+
+    ta := TouchArea {
+        enabled: root.active;
+        clicked => { root.clicked(); }
+    }
+
+    HorizontalLayout {
+        alignment: center;
+        spacing: 6px;
+        padding-left: 10px;
+        padding-right: 10px;
+
+        Text {
+            text: root.icon_symbol;
+            color: root.active ? #93c5fd : #64748b;
+            font-size: 14px;
+            vertical-alignment: center;
+        }
+
+        Text {
+            text: root.label;
+            color: root.active ? #f1f5f9 : #64748b;
+            font-size: 13px;
+            font-weight: 500;
+            vertical-alignment: center;
+        }
+    }
+}
+
+component ActionButton inherits Rectangle {
+    in property <string> text;
+    in property <color> base_color: #3b82f6;
+    in property <color> hover_color: #60a5fa;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    border-radius: 8px;
+    background: !root.enabled ? #1f293d : (ta.has-hover ? root.hover_color : root.base_color);
+    height: 40px;
+
+    ta := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+
+    Text {
+        text: root.text;
+        color: !root.enabled ? #64748b : #ffffff;
+        font-size: 14px;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+export component AppWindow inherits Window {
+    title: "Mirro — Controle & Espelhamento Android";
+    icon: @image-url("../tools/scrcpy/scrcpy.png");
+    min-width: 580px;
+    min-height: 660px;
+    preferred-width: 640px;
+    preferred-height: 750px;
+    background: #0f172a;
+    default-font-family: "Segoe UI, sans-serif";
+
+    in-out property <[DeviceCardData]> devices: [];
+    in-out property <bool> is_refreshing: false;
+    in-out property <bool> show_rename_dialog: false;
+    in-out property <string> rename_serial: "";
+    in-out property <string> rename_text: "";
+    in-out property <bool> turn_screen_off: false;
+
+    callback refresh_requested();
+    callback mirror_toggled(string, bool);
+    callback nav_action(string, string);
+    callback start_rename(string, string);
+    callback confirm_rename(string, string);
+    callback cancel_rename();
+
+    VerticalLayout {
+        padding: 24px;
+        spacing: 20px;
+
+        // Cabeçalho da Aplicação
+        HorizontalLayout {
+            alignment: space-between;
+
+            VerticalLayout {
+                spacing: 4px;
+
+                HorizontalLayout {
+                    spacing: 10px;
+                    alignment: start;
+
+                    Rectangle {
+                        width: 32px;
+                        height: 32px;
+                        border-radius: 8px;
+                        background: #6366f1;
+
+                        Text {
+                            text: "M";
+                            color: #ffffff;
+                            font-size: 18px;
+                            font-weight: 800;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    Text {
+                        text: "Mirro";
+                        color: #f8fafc;
+                        font-size: 24px;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                    }
+
+                    Rectangle {
+                        border-radius: 12px;
+                        background: #1e293b;
+                        border-width: 1px;
+                        border-color: #334155;
+                        height: 24px;
+
+                        HorizontalLayout {
+                            padding-left: 8px;
+                            padding-right: 8px;
+                            Text {
+                                text: "MVP v0.1";
+                                color: #94a3b8;
+                                font-size: 11px;
+                                font-weight: 600;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+
+                Text {
+                    text: "Espelhamento rápido de baixa latência e controle de dispositivos Android";
+                    color: #94a3b8;
+                    font-size: 13px;
+                }
+            }
+
+            // Botão Atualizar
+            Rectangle {
+                width: 120px;
+                height: 38px;
+                border-radius: 8px;
+                background: refresh_ta.has-hover ? #334155 : #1e293b;
+                border-width: 1px;
+                border-color: #475569;
+
+                refresh_ta := TouchArea {
+                    clicked => { root.refresh_requested(); }
+                }
+
+                HorizontalLayout {
+                    alignment: center;
+                    spacing: 8px;
+
+                    Text {
+                        text: "⟳";
+                        color: #38bdf8;
+                        font-size: 16px;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                    }
+
+                    Text {
+                        text: "Atualizar";
+                        color: #f1f5f9;
+                        font-size: 13px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+
+        // Barra de Resumo de Status e Configurações
+        Rectangle {
+            border-radius: 10px;
+            background: #1e293b;
+            border-width: 1px;
+            border-color: #334155;
+            height: 48px;
+
+            HorizontalLayout {
+                padding-left: 16px;
+                padding-right: 16px;
+                alignment: space-between;
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+
+                    Rectangle {
+                        width: 10px;
+                        height: 10px;
+                        border-radius: 5px;
+                        background: root.devices.length > 0 ? #22c55e : #eab308;
+                        y: (parent.height - self.height) / 2;
+                    }
+
+                    Text {
+                        text: root.devices.length == 0 ? "Aguardando conexão USB..." : (root.devices.length == 1 ? "1 aparelho detectado" : root.devices.length + " aparelhos detectados");
+                        color: #e2e8f0;
+                        font-size: 13px;
+                        font-weight: 500;
+                        vertical-alignment: center;
+                    }
+                }
+
+                // Opção: Apagar tela física do celular ao espelhar
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: end;
+
+                    Rectangle {
+                        width: 20px;
+                        height: 20px;
+                        border-radius: 4px;
+                        border-width: 1px;
+                        border-color: root.turn_screen_off ? #3b82f6 : #64748b;
+                        background: root.turn_screen_off ? #3b82f6 : transparent;
+                        y: (parent.height - self.height) / 2;
+
+                        chk_ta := TouchArea {
+                            clicked => { root.turn_screen_off = !root.turn_screen_off; }
+                        }
+
+                        if root.turn_screen_off: Text {
+                            text: "✓";
+                            color: #ffffff;
+                            font-size: 13px;
+                            font-weight: 700;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    Text {
+                        text: "Apagar tela do celular ao espelhar";
+                        color: #cbd5e1;
+                        font-size: 12px;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+
+        // Estado Vazio (Sem Aparelhos)
+        if root.devices.length == 0: Rectangle {
+            border-radius: 14px;
+            background: #131d31;
+            border-width: 1px;
+            border-color: #1e293b;
+            height: 320px;
+
+            VerticalLayout {
+                alignment: center;
+                spacing: 16px;
+                padding: 30px;
+
+                Text {
+                    text: "📱";
+                    font-size: 48px;
+                    horizontal-alignment: center;
+                }
+
+                Text {
+                    text: "Nenhum celular conectado via USB";
+                    color: #f8fafc;
+                    font-size: 18px;
+                    font-weight: 600;
+                    horizontal-alignment: center;
+                }
+
+                Text {
+                    text: "1. Conecte o cabo USB no computador e no celular.\n2. Verifique se a 'Depuração USB' está ativada nas Opções do Desenvolvedor do Android.\n3. Desbloqueie o aparelho para aceitar a permissão de conexão.";
+                    color: #94a3b8;
+                    font-size: 13px;
+                    horizontal-alignment: center;
+                }
+
+                HorizontalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 180px;
+                        height: 40px;
+                        border-radius: 8px;
+                        background: empty_ta.has-hover ? #2563eb : #1d4ed8;
+
+                        empty_ta := TouchArea {
+                            clicked => { root.refresh_requested(); }
+                        }
+
+                        Text {
+                            text: "Escanear Agora";
+                            color: #ffffff;
+                            font-size: 14px;
+                            font-weight: 600;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Lista de Dispositivos Conectados
+        if root.devices.length > 0: ScrollView {
+            VerticalLayout {
+                spacing: 16px;
+
+                for device[idx] in root.devices: Rectangle {
+                    border-radius: 14px;
+                    background: #182235;
+                    border-width: 1px;
+                    border-color: device.is_mirroring ? #3b82f6 : #28354d;
+                    clip: true;
+
+                    VerticalLayout {
+                        padding: 18px;
+                        spacing: 16px;
+
+                        // Linha Superior: Nome, Apelido, Serial e Badge de Status
+                        HorizontalLayout {
+                            alignment: space-between;
+
+                            HorizontalLayout {
+                                spacing: 10px;
+                                alignment: start;
+
+                                Text {
+                                    text: "📱";
+                                    font-size: 20px;
+                                    vertical-alignment: center;
+                                }
+
+                                VerticalLayout {
+                                    spacing: 2px;
+
+                                    HorizontalLayout {
+                                        spacing: 8px;
+
+                                        Text {
+                                            text: device.display_name;
+                                            color: #f8fafc;
+                                            font-size: 17px;
+                                            font-weight: 700;
+                                            vertical-alignment: center;
+                                        }
+
+                                        // Botão Renomear / Apelido
+                                        Rectangle {
+                                            width: 24px;
+                                            height: 24px;
+                                            border-radius: 6px;
+                                            background: edit_ta.has-hover ? #334155 : transparent;
+
+                                            edit_ta := TouchArea {
+                                                clicked => { root.start_rename(device.serial, device.display_name); }
+                                            }
+
+                                            Text {
+                                                text: "✏️";
+                                                font-size: 12px;
+                                                horizontal-alignment: center;
+                                                vertical-alignment: center;
+                                            }
+                                        }
+                                    }
+
+                                    Text {
+                                        text: "Serial: " + device.serial + " • Modelo: " + device.model;
+                                        color: #64748b;
+                                        font-size: 12px;
+                                    }
+                                }
+                            }
+
+                            // Badge de Status do Aparelho
+                            Rectangle {
+                                border-radius: 12px;
+                                background: device.is_mirroring ? #0369a1 : (device.is_ready ? #15803d : (device.is_unauthorized ? #b45309 : #334155));
+                                height: 26px;
+
+                                HorizontalLayout {
+                                    padding-left: 10px;
+                                    padding-right: 10px;
+
+                                    Text {
+                                        text: device.status_text;
+                                        color: #ffffff;
+                                        font-size: 12px;
+                                        font-weight: 600;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+                        }
+
+                        // Aviso de Não Autorizado (quando aplicável)
+                        if device.is_unauthorized: Rectangle {
+                            border-radius: 8px;
+                            background: #451a03;
+                            border-width: 1px;
+                            border-color: #78350f;
+
+                            HorizontalLayout {
+                                padding: 12px;
+                                spacing: 10px;
+
+                                Text {
+                                    text: "⚠️";
+                                    font-size: 18px;
+                                    vertical-alignment: center;
+                                }
+
+                                Text {
+                                    text: device.status_message;
+                                    color: #fed7aa;
+                                    font-size: 13px;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+
+                        // Barra de Botões de Navegação Virtual (Voltar, Home, Recentes, Ligar/Desligar Tela)
+                        if device.is_ready: VerticalLayout {
+                            spacing: 8px;
+
+                            Text {
+                                text: "Controles Rápidos do Android:";
+                                color: #94a3b8;
+                                font-size: 12px;
+                                font-weight: 500;
+                            }
+
+                            HorizontalLayout {
+                                spacing: 10px;
+
+                                NavButton {
+                                    icon_symbol: "◀";
+                                    label: "Voltar";
+                                    clicked => { root.nav_action(device.serial, "back"); }
+                                }
+
+                                NavButton {
+                                    icon_symbol: "⌂";
+                                    label: "Início";
+                                    clicked => { root.nav_action(device.serial, "home"); }
+                                }
+
+                                NavButton {
+                                    icon_symbol: "▢";
+                                    label: "Recentes";
+                                    clicked => { root.nav_action(device.serial, "recents"); }
+                                }
+
+                                NavButton {
+                                    icon_symbol: "⏻";
+                                    label: "Tela";
+                                    clicked => { root.nav_action(device.serial, "power"); }
+                                }
+                            }
+                        }
+
+                        // Botão de Ação Principal (Espelhar ou Parar)
+                        ActionButton {
+                            text: device.is_mirroring ? "⏹ Encerrar Espelhamento" : (device.is_ready ? "▶ Espelhar Tela (Fast Switching)" : "Aguardando Autorização...");
+                            base_color: device.is_mirroring ? #dc2626 : (device.is_ready ? #2563eb : #334155);
+                            hover_color: device.is_mirroring ? #ef4444 : (device.is_ready ? #3b82f6 : #334155);
+                            enabled: device.is_ready;
+                            clicked => { root.mirror_toggled(device.serial, root.turn_screen_off); }
+                        }
+                    }
+
+                    // Camada de Blur / Máscara Dinâmica durante espelhamento ativo (Decisão 3 e 4)
+                    if device.is_mirroring: Rectangle {
+                        background: #0b1120f2;
+                        border-radius: 14px;
+
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 12px;
+                            padding: 20px;
+
+                            Text {
+                                text: "⚡ Janela Flutuante Aberta";
+                                color: #38bdf8;
+                                font-size: 18px;
+                                font-weight: 700;
+                                horizontal-alignment: center;
+                            }
+
+                            Text {
+                                text: "O espelhamento deste celular está rodando na janela flutuante com baixa latência.\nClique no botão abaixo ou feche a janela para retornar o foco ao painel.";
+                                color: #cbd5e1;
+                                font-size: 13px;
+                                horizontal-alignment: center;
+                            }
+
+                            HorizontalLayout {
+                                alignment: center;
+                                spacing: 12px;
+
+                                Rectangle {
+                                    width: 200px;
+                                    height: 38px;
+                                    border-radius: 8px;
+                                    background: stop_ta.has-hover ? #ef4444 : #dc2626;
+
+                                    stop_ta := TouchArea {
+                                        clicked => { root.mirror_toggled(device.serial, false); }
+                                    }
+
+                                    Text {
+                                        text: "⏹ Fechar Espelhamento";
+                                        color: #ffffff;
+                                        font-size: 13px;
+                                        font-weight: 600;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Modal / Diálogo de Edição de Apelido do Celular
+    if root.show_rename_dialog: Rectangle {
+        background: #000000bb;
+
+        TouchArea {
+            // Previne cliques atrás do modal
+        }
+
+        Rectangle {
+            width: 420px;
+            height: 230px;
+            border-radius: 16px;
+            background: #1e293b;
+            border-width: 1px;
+            border-color: #3b82f6;
+
+            VerticalLayout {
+                padding: 24px;
+                spacing: 16px;
+
+                Text {
+                    text: "Definir Apelido do Celular";
+                    color: #f8fafc;
+                    font-size: 17px;
+                    font-weight: 700;
+                }
+
+                Text {
+                    text: "Dê um nome amigável para este aparelho (salvo nas preferências locais):";
+                    color: #94a3b8;
+                    font-size: 13px;
+                }
+
+                input := LineEdit {
+                    text: root.rename_text;
+                    edited(txt) => { root.rename_text = txt; }
+                }
+
+                HorizontalLayout {
+                    alignment: end;
+                    spacing: 12px;
+
+                    Rectangle {
+                        width: 90px;
+                        height: 36px;
+                        border-radius: 8px;
+                        background: cancel_ta.has-hover ? #475569 : #334155;
+
+                        cancel_ta := TouchArea {
+                            clicked => { root.cancel_rename(); }
+                        }
+
+                        Text {
+                            text: "Cancelar";
+                            color: #cbd5e1;
+                            font-size: 13px;
+                            font-weight: 500;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    Rectangle {
+                        width: 90px;
+                        height: 36px;
+                        border-radius: 8px;
+                        background: save_ta.has-hover ? #2563eb : #1d4ed8;
+
+                        save_ta := TouchArea {
+                            clicked => { root.confirm_rename(root.rename_serial, input.text); }
+                        }
+
+                        Text {
+                            text: "Salvar";
+                            color: #ffffff;
+                            font-size: 13px;
+                            font-weight: 600;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
