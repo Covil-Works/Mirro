@@ -156,6 +156,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "home" => 3,
                     "recents" => 187,
                     "power" => 26,
+                    "volup" => 24,
+                    "voldown" => 25,
+                    "screenshot" => 120,
+                    "menu" => 82,
                     _ => return,
                 };
                 let _ = AdbClient::send_keyevent(&serial_str, keycode).await;

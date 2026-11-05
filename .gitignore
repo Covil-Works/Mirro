@@ -8,6 +8,11 @@ config.json
 /tools/
 *.zip
 
+# Binaries and executables
+*.exe
+*.dll
+.agents/**/bin/
+
 # Visual Studio / Windows
 *.pdb
 *.ilk

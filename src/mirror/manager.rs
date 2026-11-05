@@ -84,6 +84,7 @@ impl MirrorManager {
             "--stay-awake".to_string(), // Evita desconexão USB por suspensão de energia
             "--window-title".to_string(),
             window_title,
+            "--background-color=#000000".to_string(),
         ];
 
         if turn_screen_off {
