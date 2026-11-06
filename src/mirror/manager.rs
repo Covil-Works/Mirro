@@ -48,7 +48,7 @@ impl MirrorManager {
         serial: String,
         display_name: String,
         turn_screen_off: bool,
-        show_phone_frame: bool,
+        always_on_top: bool,
     ) -> Result<(), String> {
         // Encerra sessão anterior caso ativa
         self.stop_mirroring().await;
@@ -62,8 +62,8 @@ impl MirrorManager {
         let server_path = scrcpy_dir.join("scrcpy-server");
 
         info!(
-            "Iniciando espelhamento para {} ({}) usando {:?} (moldura: {})",
-            display_name, serial, scrcpy_path, show_phone_frame
+            "Iniciando espelhamento para {} ({}) usando {:?} (always_on_top: {}, turn_off: {})",
+            display_name, serial, scrcpy_path, always_on_top, turn_screen_off
         );
 
         let window_title = format!("Mirro - {}", display_name);
@@ -81,15 +81,14 @@ impl MirrorManager {
         let mut args = vec![
             "-s".to_string(),
             serial.clone(),
-            "--always-on-top".to_string(),
             "--stay-awake".to_string(), // Evita desconexão USB por suspensão de energia
             "--window-title".to_string(),
-            window_title.clone(),
+            window_title,
             "--background-color=#000000".to_string(),
         ];
 
-        if show_phone_frame {
-            args.push("--window-borderless".to_string());
+        if always_on_top {
+            args.push("--always-on-top".to_string());
         }
 
         if turn_screen_off {
@@ -108,13 +107,6 @@ impl MirrorManager {
                 return Err(err_msg);
             }
         };
-
-        if show_phone_frame {
-            crate::mirror::window_embed::embed_scrcpy_in_frame(
-                "Mirro - Espelhamento Flutuante",
-                &window_title,
-            );
-        }
 
         // Redireciona logs de stdout e stderr para o console do Mirro
         if let Some(stdout) = child.stdout.take() {

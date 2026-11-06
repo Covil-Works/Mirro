@@ -10,15 +10,15 @@ pub struct AppConfig {
     pub aliases: HashMap<String, String>,
     #[serde(default = "default_turn_screen_off")]
     pub turn_screen_off: bool,
-    #[serde(default = "default_show_phone_frame")]
-    pub show_phone_frame: bool,
+    #[serde(default = "default_always_on_top")]
+    pub always_on_top: bool,
 }
 
 fn default_turn_screen_off() -> bool {
     true
 }
 
-fn default_show_phone_frame() -> bool {
+fn default_always_on_top() -> bool {
     true
 }
 
@@ -27,7 +27,7 @@ impl Default for AppConfig {
         Self {
             aliases: HashMap::new(),
             turn_screen_off: true,
-            show_phone_frame: true,
+            always_on_top: true,
         }
     }
 }
@@ -89,13 +89,13 @@ impl ConfigManager {
         Self::save(&cfg);
     }
 
-    pub fn get_show_phone_frame() -> bool {
-        Self::load().show_phone_frame
+    pub fn get_always_on_top() -> bool {
+        Self::load().always_on_top
     }
 
-    pub fn set_show_phone_frame(val: bool) {
+    pub fn set_always_on_top(val: bool) {
         let mut cfg = Self::load();
-        cfg.show_phone_frame = val;
+        cfg.always_on_top = val;
         Self::save(&cfg);
     }
 }
@@ -112,6 +112,6 @@ mod tests {
         let decoded: AppConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(decoded.aliases.get("SERIAL123").unwrap(), "Meu Galaxy");
         assert!(decoded.turn_screen_off);
-        assert!(decoded.show_phone_frame);
+        assert!(decoded.always_on_top);
     }
 }
