@@ -68,3 +68,31 @@ Este documento centraliza as regras e padrões visuais aplicáveis à interface 
   - Inserir `y: (parent.height - self.height) / 2;` em elementos filhos diretos de `HorizontalLayout` ou `VerticalLayout` (o layout sobrescreve posições manuais).
 * **Correto (Padrão Aprovado):**
   - `HorizontalLayout { alignment: start; cross-axis-alignment: center; spacing: 10px; Rectangle { width: 16px; height: 16px; Image { source: icon; width: 16px; height: 16px; } } Text { text: label; vertical-alignment: center; } }`
+
+---
+
+### [visual-standards-006] Margens Laterais e Espaçamento Interno em Botões (Padding)
+
+* **Severidade:** Obrigatório
+* **Descrição:** É estritamente proibido renderizar botões com margens laterais coladas ou apertadas em relação ao texto interno. Todo componente de botão (`MonoButton` ou equivalente) deve implementar margem interna horizontal mínima padronizada (`padding-left` e `padding-right` de no mínimo 16px a 18px para botões regulares e 12px para botões compactos) e dimensionamento de largura mínima proporcional ao conteúdo (`min-width: label.min-width + (padding * 2)`). Em botões que preenchem toda a largura disponível de um container (largura 100%), o texto deve permanecer centralizado com folga segura em relação às bordas.
+* **Justificativa:** Botões com texto colado às bordas aparentam desleixo visual, quebram a hierarquia óptica, prejudicam a legibilidade e diminuem a precisão de clique. Um padding horizontal generoso confere sofisticação, clareza técnica e elegância à estética monocromática do Mirro.
+* **Incorreto (Anti-padrão):**
+  - Botão com bordas coladas no texto: `[Copiar e colar]`, `[EDITAR]` ou `[SALVAR]` sem folga lateral.
+  - Botão dentro de layout horizontal sem `min-width` ou sem padding, assumindo apenas as dimensões mínimas da fonte.
+* **Correto (Padrão Aprovado):**
+  - Botão com margens arejadas e simétricas: `[   Copiar e colar   ]`, `[   EDITAR   ]`, `[   ESPELHAR   ]`.
+  - Componente com propriedade `padding_horizontal` (padrão 18px), `HorizontalLayout` interno e `min-width: label.min-width + (root.padding_horizontal * 2)`.
+
+---
+
+### [visual-standards-007] Responsividade e Quebra Obrigatória de Linha (Word Wrap)
+
+* **Severidade:** Obrigatório
+* **Descrição:** Todos os blocos de texto descritivo, instruções, parágrafos explicativos e legendas devem possuir quebra de linha ativada explicitamente (`wrap: word-wrap;`). Em layouts horizontais contendo textos adjacentes a botões, seletores ou controles, o container de texto deve receber expansão flexível (`horizontal-stretch: 1;`) enquanto o controle adjacente recebe largura fixa (`horizontal-stretch: 0;`). É estritamente proibido deixar textos longos com comportamento padrão de linha única infinita (`no-wrap`).
+* **Justificativa:** No framework Slint, o padrão de renderização de texto é linha única horizontal. Sem `wrap: word-wrap;` e contenção flexível, textos explicativos forçam a expansão irrestrita do layout, empurrando controles para fora da área visível e quebrando a responsividade da janela em resoluções menores.
+* **Incorreto (Anti-padrão):**
+  - Texto explicativo de configuração ou instrução sem a propriedade `wrap: word-wrap;`.
+  - Layout horizontal dividindo texto e toggle sem atribuir `horizontal-stretch: 1;` ao bloco de texto.
+* **Correto (Padrão Aprovado):**
+  - `HorizontalLayout { spacing: 16px; VerticalLayout { horizontal-stretch: 1; Text { text: "..."; wrap: word-wrap; } } MonoToggle { horizontal-stretch: 0; } }`
+  - Painéis de configuração e formulários contidos em `ScrollView` com rolagem vertical suave.

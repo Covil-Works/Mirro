@@ -1,6 +1,7 @@
 slint::include_modules!();
 
 use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 use tracing::{error, info, Level};
 use tracing_subscriber::FmtSubscriber;
@@ -68,14 +69,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let ui = AppWindow::new()?;
     let mirror_manager = MirrorManager::new();
+    let floating_frame_weak = Arc::new(Mutex::new(None::<slint::Weak<FloatingPhoneWindow>>));
 
     // Inicializa preferências salvas no arquivo de configuração
     let initial_turn_off = ConfigManager::get_turn_screen_off();
     ui.set_turn_screen_off(initial_turn_off);
 
+    let initial_show_phone_frame = ConfigManager::get_show_phone_frame();
+    ui.set_show_phone_frame(initial_show_phone_frame);
+
     // Callback de alteração da preferência de apagar tela ao espelhar
     ui.on_toggle_turn_screen_off(move |val| {
         ConfigManager::set_turn_screen_off(val);
+    });
+
+    // Callback de alteração da preferência de moldura de smartphone
+    ui.on_toggle_show_phone_frame(move |val| {
+        ConfigManager::set_show_phone_frame(val);
     });
 
     // Atualização inicial de dispositivos
@@ -103,9 +113,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let mirror_mgr = mirror_manager.clone();
         let ui_weak = ui.as_weak();
+        let floating_weak = floating_frame_weak.clone();
         mirror_manager.set_on_ended(move || {
             let mirror_mgr = mirror_mgr.clone();
             let ui_weak = ui_weak.clone();
+            let weak_opt = floating_weak.lock().unwrap().take();
+            let _ = slint::invoke_from_event_loop(move || {
+                if let Some(weak) = weak_opt {
+                    if let Some(win) = weak.upgrade() {
+                        let _ = win.hide();
+                    }
+                }
+            });
             tokio::spawn(async move {
                 update_devices(&mirror_mgr, ui_weak).await;
             });
@@ -129,9 +148,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let mirror_mgr = mirror_manager.clone();
         let ui_weak = ui.as_weak();
-        ui.on_mirror_toggled(move |serial, turn_off| {
+        let floating_weak = floating_frame_weak.clone();
+        ui.on_mirror_toggled(move |serial, turn_off, show_frame| {
             let mirror_mgr = mirror_mgr.clone();
             let ui_weak = ui_weak.clone();
+            let floating_weak = floating_weak.clone();
             let serial_str = serial.to_string();
             tokio::spawn(async move {
                 let is_active = mirror_mgr
@@ -142,10 +163,84 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 if is_active {
                     mirror_mgr.stop_mirroring().await;
+                    let weak_opt = floating_weak.lock().unwrap().take();
+                    let _ = slint::invoke_from_event_loop(move || {
+                        if let Some(weak) = weak_opt {
+                            if let Some(win) = weak.upgrade() {
+                                let _ = win.hide();
+                            }
+                        }
+                    });
                 } else {
                     let alias = ConfigManager::get_alias(&serial_str)
                         .unwrap_or_else(|| serial_str.clone());
-                    if let Err(e) = mirror_mgr.start_mirroring(serial_str.clone(), alias, turn_off).await {
+
+                    if show_frame {
+                        let mirror_mgr_close = mirror_mgr.clone();
+                        let serial_nav = serial_str.clone();
+                        let alias_disp = alias.clone();
+                        let floating_weak_inner = floating_weak.clone();
+
+                        let _ = slint::invoke_from_event_loop(move || {
+                            let old_weak = floating_weak_inner.lock().unwrap().take();
+                            if let Some(old) = old_weak {
+                                if let Some(win) = old.upgrade() {
+                                    let _ = win.hide();
+                                }
+                            }
+
+                            if let Ok(frame_win) = FloatingPhoneWindow::new() {
+                                frame_win.set_display_name(SharedString::from(alias_disp));
+                                frame_win.set_serial(SharedString::from(serial_nav.clone()));
+
+                                let mm = mirror_mgr_close.clone();
+                                frame_win.on_close_clicked(move || {
+                                    let mm = mm.clone();
+                                    tokio::spawn(async move {
+                                        mm.stop_mirroring().await;
+                                    });
+                                });
+
+                                frame_win.on_drag_window(move || {
+                                    crate::mirror::window_embed::handle_drag_window(
+                                        "Mirro - Espelhamento Flutuante",
+                                    );
+                                });
+
+                                let serial_btn = serial_nav.clone();
+                                frame_win.on_nav_action(move |act| {
+                                    let s = serial_btn.clone();
+                                    let a = act.to_string();
+                                    tokio::spawn(async move {
+                                        let keycode = match a.as_str() {
+                                            "volup" => 24,
+                                            "voldown" => 25,
+                                            "power" => 26,
+                                            _ => return,
+                                        };
+                                        let _ = AdbClient::send_keyevent(&s, keycode).await;
+                                    });
+                                });
+
+                                let _ = frame_win.show();
+                                *floating_weak_inner.lock().unwrap() = Some(frame_win.as_weak());
+                            }
+                        });
+                    } else {
+                        let weak_opt = floating_weak.lock().unwrap().take();
+                        let _ = slint::invoke_from_event_loop(move || {
+                            if let Some(weak) = weak_opt {
+                                if let Some(win) = weak.upgrade() {
+                                    let _ = win.hide();
+                                }
+                            }
+                        });
+                    }
+
+                    if let Err(e) = mirror_mgr
+                        .start_mirroring(serial_str.clone(), alias, turn_off, show_frame)
+                        .await
+                    {
                         error!("Falha ao iniciar espelhamento: {}", e);
                     }
                 }

@@ -10,9 +10,15 @@ pub struct AppConfig {
     pub aliases: HashMap<String, String>,
     #[serde(default = "default_turn_screen_off")]
     pub turn_screen_off: bool,
+    #[serde(default = "default_show_phone_frame")]
+    pub show_phone_frame: bool,
 }
 
 fn default_turn_screen_off() -> bool {
+    true
+}
+
+fn default_show_phone_frame() -> bool {
     true
 }
 
@@ -21,6 +27,7 @@ impl Default for AppConfig {
         Self {
             aliases: HashMap::new(),
             turn_screen_off: true,
+            show_phone_frame: true,
         }
     }
 }
@@ -81,6 +88,16 @@ impl ConfigManager {
         cfg.turn_screen_off = val;
         Self::save(&cfg);
     }
+
+    pub fn get_show_phone_frame() -> bool {
+        Self::load().show_phone_frame
+    }
+
+    pub fn set_show_phone_frame(val: bool) {
+        let mut cfg = Self::load();
+        cfg.show_phone_frame = val;
+        Self::save(&cfg);
+    }
 }
 
 #[cfg(test)]
@@ -95,5 +112,6 @@ mod tests {
         let decoded: AppConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(decoded.aliases.get("SERIAL123").unwrap(), "Meu Galaxy");
         assert!(decoded.turn_screen_off);
+        assert!(decoded.show_phone_frame);
     }
 }
