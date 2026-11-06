@@ -69,6 +69,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ui = AppWindow::new()?;
     let mirror_manager = MirrorManager::new();
 
+    // Inicializa preferências salvas no arquivo de configuração
+    let initial_turn_off = ConfigManager::get_turn_screen_off();
+    ui.set_turn_screen_off(initial_turn_off);
+
+    // Callback de alteração da preferência de apagar tela ao espelhar
+    ui.on_toggle_turn_screen_off(move |val| {
+        ConfigManager::set_turn_screen_off(val);
+    });
+
     // Atualização inicial de dispositivos
     {
         let mirror_mgr = mirror_manager.clone();

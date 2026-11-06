@@ -4,10 +4,25 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 
-#[derive(Debug, Serialize, Deserialize, Default, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AppConfig {
     #[serde(default)]
     pub aliases: HashMap<String, String>,
+    #[serde(default = "default_turn_screen_off")]
+    pub turn_screen_off: bool,
+}
+
+fn default_turn_screen_off() -> bool {
+    true
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self {
+            aliases: HashMap::new(),
+            turn_screen_off: true,
+        }
+    }
 }
 
 pub struct ConfigManager;
@@ -56,6 +71,16 @@ impl ConfigManager {
         cfg.aliases.insert(serial.to_string(), alias.trim().to_string());
         Self::save(&cfg);
     }
+
+    pub fn get_turn_screen_off() -> bool {
+        Self::load().turn_screen_off
+    }
+
+    pub fn set_turn_screen_off(val: bool) {
+        let mut cfg = Self::load();
+        cfg.turn_screen_off = val;
+        Self::save(&cfg);
+    }
 }
 
 #[cfg(test)]
@@ -69,5 +94,6 @@ mod tests {
         let json = serde_json::to_string(&cfg).unwrap();
         let decoded: AppConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(decoded.aliases.get("SERIAL123").unwrap(), "Meu Galaxy");
+        assert!(decoded.turn_screen_off);
     }
 }

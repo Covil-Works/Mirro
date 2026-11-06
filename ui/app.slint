@@ -1,4 +1,8 @@
 import { LineEdit, ScrollView } from "std-widgets.slint";
+import "./fonts/Poppins-Regular.ttf";
+import "./fonts/Poppins-Medium.ttf";
+import "./fonts/Poppins-SemiBold.ttf";
+import "./fonts/Poppins-Bold.ttf";
 
 export struct DeviceCardData {
     serial: string,
@@ -57,11 +61,11 @@ component MonoToggle inherits Rectangle {
     HorizontalLayout {
         spacing: 10px;
         alignment: start;
+        cross-axis-alignment: center;
 
         Rectangle {
             width: 16px;
             height: 16px;
-            y: (parent.height - self.height) / 2;
             border-radius: 2px;
             border-width: 1px;
             border-color: #ffffff;
@@ -77,13 +81,96 @@ component MonoToggle inherits Rectangle {
             }
         }
 
-        Text {
+        if root.label != "": Text {
             text: root.label;
             color: ta.has-hover ? #ffffff : #999999;
             font-size: 11px;
             font-weight: 600;
             letter-spacing: 0.5px;
             vertical-alignment: center;
+        }
+    }
+}
+
+component NavButton inherits Rectangle {
+    in property <image> icon_image;
+    in property <string> label;
+    in property <string> badge_text: "";
+    in property <bool> is_active: false;
+    callback clicked();
+
+    height: 40px;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: root.is_active ? #ffffff : (ta.has-hover ? #2a2a2a : transparent);
+    background: root.is_active ? #161616 : (ta.has-hover ? #0f0f0f : transparent);
+
+    ta := TouchArea {
+        clicked => { root.clicked(); }
+    }
+
+    // Indicador ativo na borda esquerda
+    if root.is_active: Rectangle {
+        x: 0px;
+        y: (parent.height - self.height) / 2;
+        width: 3px;
+        height: 18px;
+        border-radius: 1.5px;
+        background: #ffffff;
+    }
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 10px;
+        alignment: start;
+        cross-axis-alignment: center;
+
+        // Ícone vetorial com container de dimensão fixa e centralização garantida
+        Rectangle {
+            width: 16px;
+            height: 16px;
+            clip: false;
+
+            Image {
+                source: root.icon_image;
+                width: 16px;
+                height: 16px;
+                colorize: root.is_active ? #ffffff : (ta.has-hover ? #ffffff : #777777);
+            }
+        }
+
+        // Texto do botão
+        Text {
+            text: root.label;
+            color: root.is_active ? #ffffff : (ta.has-hover ? #ffffff : #888888);
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.8px;
+            vertical-alignment: center;
+        }
+
+        // Badge opcional (contador)
+        if root.badge_text != "": Rectangle {
+            height: 18px;
+            border-radius: 9px;
+            background: root.is_active ? #ffffff : #1e1e1e;
+            border-width: 1px;
+            border-color: root.is_active ? #ffffff : #333333;
+
+            HorizontalLayout {
+                padding-left: 6px;
+                padding-right: 6px;
+                alignment: center;
+                cross-axis-alignment: center;
+                Text {
+                    text: root.badge_text;
+                    color: root.is_active ? #000000 : #888888;
+                    font-size: 9px;
+                    font-weight: 800;
+                    vertical-alignment: center;
+                }
+            }
         }
     }
 }
@@ -215,6 +302,7 @@ component GenericPhoneFrame inherits Rectangle {
                     padding-left: 12px;
                     padding-right: 12px;
                     alignment: space-between;
+                    cross-axis-alignment: center;
 
                     // Sensor Face ID (TrueDepth)
                     Rectangle {
@@ -222,7 +310,6 @@ component GenericPhoneFrame inherits Rectangle {
                         height: 7px;
                         border-radius: 3.5px;
                         background: #0c0c0c;
-                        y: (parent.height - self.height) / 2;
                     }
 
                     // Câmera Frontal (lente com anel óptico escuro)
@@ -233,7 +320,6 @@ component GenericPhoneFrame inherits Rectangle {
                         background: #060606;
                         border-width: 1px;
                         border-color: #181818;
-                        y: (parent.height - self.height) / 2;
                     }
                 }
             }
@@ -248,6 +334,7 @@ component GenericPhoneFrame inherits Rectangle {
                 // Barra de Status Superior do iOS
                 HorizontalLayout {
                     alignment: space-between;
+                    cross-axis-alignment: center;
 
                     // Hora de lançamento da Apple (9:41)
                     Text {
@@ -263,6 +350,7 @@ component GenericPhoneFrame inherits Rectangle {
                     HorizontalLayout {
                         spacing: 8px;
                         alignment: center;
+                        cross-axis-alignment: center;
 
                         Text {
                             text: "5G";
@@ -276,6 +364,7 @@ component GenericPhoneFrame inherits Rectangle {
                         HorizontalLayout {
                             spacing: 1.5px;
                             alignment: center;
+                            cross-axis-alignment: center;
 
                             Rectangle {
                                 width: 20px;
@@ -300,7 +389,6 @@ component GenericPhoneFrame inherits Rectangle {
                                 height: 4px;
                                 border-radius: 0.75px;
                                 background: #888888;
-                                y: (parent.height - self.height) / 2;
                             }
                         }
                     }
@@ -337,6 +425,7 @@ component GenericPhoneFrame inherits Rectangle {
                                 padding-left: 8px;
                                 padding-right: 8px;
                                 alignment: center;
+                                cross-axis-alignment: center;
                                 Text {
                                     text: "NÃO AUTORIZADO";
                                     color: #ffffff;
@@ -391,6 +480,7 @@ component GenericPhoneFrame inherits Rectangle {
                                 padding-left: 10px;
                                 padding-right: 10px;
                                 alignment: center;
+                                cross-axis-alignment: center;
                                 Text {
                                     text: "ESPELHANDO";
                                     color: #000000;
@@ -419,6 +509,7 @@ component GenericPhoneFrame inherits Rectangle {
                 // Barra Home Indicator do iPhone (barra inferior de gestos)
                 HorizontalLayout {
                     alignment: center;
+                    cross-axis-alignment: center;
                     Rectangle {
                         width: 104px;
                         height: 4.5px;
@@ -439,15 +530,16 @@ export component AppWindow inherits Window {
     preferred-width: 1080px;
     preferred-height: 720px;
     background: #000000;
-    default-font-family: "Segoe UI, sans-serif";
+    default-font-family: "Poppins, Segoe UI, sans-serif";
 
     in-out property <[DeviceCardData]> devices: [];
     in-out property <bool> is_refreshing: false;
     in-out property <bool> show_rename_dialog: false;
     in-out property <string> rename_serial: "";
     in-out property <string> rename_text: "";
-    in-out property <bool> turn_screen_off: false;
+    in-out property <bool> turn_screen_off: true;
     in-out property <int> selected_device_index: 0;
+    in-out property <string> active_nav: "devices";
 
     callback refresh_requested();
     callback mirror_toggled(string, bool);
@@ -455,6 +547,7 @@ export component AppWindow inherits Window {
     callback start_rename(string, string);
     callback confirm_rename(string, string);
     callback cancel_rename();
+    callback toggle_turn_screen_off(bool);
 
     property <bool> has_devices: root.devices.length > 0;
     property <int> active_idx: (root.selected_device_index >= 0 && root.selected_device_index < root.devices.length) ? root.selected_device_index : 0;
@@ -470,9 +563,9 @@ export component AppWindow inherits Window {
     property <bool> sel_unauthorized: root.has_selected ? root.devices[root.active_idx].is_unauthorized : false;
 
     HorizontalLayout {
-        // SIDEBAR ESQUERDA: Telefones disponíveis e Configurações
+        // SIDEBAR ESQUERDA: Navbar e Lista de Telefones
         Rectangle {
-            width: 300px;
+            width: 280px;
             background: #080808;
             border-width: 0px;
 
@@ -485,12 +578,14 @@ export component AppWindow inherits Window {
             }
 
             VerticalLayout {
+                alignment: start;
                 padding: 16px;
-                spacing: 14px;
+                spacing: 12px;
 
-                // Cabeçalho da Sidebar
+                // Cabeçalho da Sidebar (Topo)
                 HorizontalLayout {
                     alignment: space-between;
+                    cross-axis-alignment: center;
 
                     Text {
                         text: "MIRRO";
@@ -510,6 +605,8 @@ export component AppWindow inherits Window {
                         HorizontalLayout {
                             padding-left: 6px;
                             padding-right: 6px;
+                            alignment: center;
+                            cross-axis-alignment: center;
                             Text {
                                 text: "v0.1";
                                 color: #777777;
@@ -521,127 +618,28 @@ export component AppWindow inherits Window {
                     }
                 }
 
-                // Seção: DISPOSITIVOS
-                HorizontalLayout {
-                    alignment: space-between;
-                    Text {
-                        text: "DISPOSITIVOS";
-                        color: #666666;
-                        font-size: 11px;
-                        font-weight: 700;
-                        letter-spacing: 1px;
-                        vertical-alignment: center;
-                    }
-
-                    Text {
-                        text: root.devices.length + " CONECTADO(S)";
-                        color: #444444;
-                        font-size: 10px;
-                        font-weight: 700;
-                        vertical-alignment: center;
-                    }
+                // Divisor
+                Rectangle {
+                    height: 1px;
+                    background: #1a1a1a;
                 }
 
-                // Lista de Dispositivos Conectados
-                if !root.has_devices: Rectangle {
-                    height: 120px;
-                    border-radius: 6px;
-                    border-width: 1px;
-                    border-color: #1a1a1a;
-                    background: #0d0d0d;
-
-                    VerticalLayout {
-                        alignment: center;
-                        spacing: 8px;
-                        padding: 12px;
-
-                        Text {
-                            text: "NENHUM DISPOSITIVO";
-                            color: #666666;
-                            font-size: 11px;
-                            font-weight: 700;
-                            horizontal-alignment: center;
-                        }
-
-                        MonoButton {
-                            text: "ESCANEAR";
-                            custom_height: 30px;
-                            clicked => { root.refresh_requested(); }
-                        }
-                    }
+                // ==========================================
+                // SEÇÃO 1: NAVEGAÇÃO DA NAVBAR (Alinhada ao topo e à esquerda)
+                // ==========================================
+                NavButton {
+                    icon_image: @image-url("icons/settings.svg");
+                    label: "CONFIGURAÇÕES";
+                    is_active: root.active_nav == "settings";
+                    clicked => { root.active_nav = "settings"; }
                 }
 
-                if root.has_devices: ScrollView {
-                    VerticalLayout {
-                        spacing: 8px;
-
-                        for device[idx] in root.devices: Rectangle {
-                            height: 64px;
-                            border-radius: 6px;
-                            border-width: (root.active_idx == idx) ? 1.5px : 1px;
-                            border-color: (root.active_idx == idx) ? #ffffff : #1e1e1e;
-                            background: (root.active_idx == idx) ? #161616 : (dev_ta.has-hover ? #121212 : #0b0b0b);
-
-                            dev_ta := TouchArea {
-                                clicked => { root.selected_device_index = idx; }
-                            }
-
-                            HorizontalLayout {
-                                padding-left: 12px;
-                                padding-right: 12px;
-                                alignment: space-between;
-
-                                VerticalLayout {
-                                    alignment: center;
-                                    spacing: 3px;
-
-                                    Text {
-                                        text: device.display_name;
-                                        color: #ffffff;
-                                        font-size: 13px;
-                                        font-weight: 700;
-                                    }
-
-                                    Text {
-                                        text: device.serial;
-                                        color: #777777;
-                                        font-size: 10px;
-                                    }
-                                }
-
-                                HorizontalLayout {
-                                    alignment: center;
-                                    spacing: 8px;
-
-                                    Rectangle {
-                                        border-radius: 3px;
-                                        border-width: 1px;
-                                        border-color: device.is_mirroring ? #ffffff : (device.is_ready ? #444444 : #2a2a2a);
-                                        background: device.is_mirroring ? #ffffff : #000000;
-                                        height: 20px;
-
-                                        HorizontalLayout {
-                                            padding-left: 6px;
-                                            padding-right: 6px;
-                                            Text {
-                                                text: device.status_text;
-                                                color: device.is_mirroring ? #000000 : (device.is_ready ? #cccccc : #777777);
-                                                font-size: 9px;
-                                                font-weight: 700;
-                                                vertical-alignment: center;
-                                            }
-                                        }
-                                    }
-
-                                    MonoButton {
-                                        text: "EDITAR";
-                                        custom_height: 24px;
-                                        clicked => { root.start_rename(device.serial, device.display_name); }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                NavButton {
+                    icon_image: @image-url("icons/phone.svg");
+                    label: "DISPOSITIVOS";
+                    badge_text: root.devices.length > 0 ? (root.devices.length + "") : "";
+                    is_active: root.active_nav == "devices";
+                    clicked => { root.active_nav = "devices"; }
                 }
 
                 // Divisor
@@ -650,44 +648,448 @@ export component AppWindow inherits Window {
                     background: #1a1a1a;
                 }
 
-                // Seção: CONFIGURAÇÕES
+                // ==========================================
+                // SEÇÃO 2: APARELHOS CONECTADOS
+                // ==========================================
                 VerticalLayout {
-                    spacing: 10px;
+                    alignment: start;
+                    spacing: 8px;
 
-                    Text {
-                        text: "CONFIGURAÇÕES";
-                        color: #666666;
-                        font-size: 11px;
-                        font-weight: 700;
-                        letter-spacing: 1px;
+                    HorizontalLayout {
+                        alignment: space-between;
+                        cross-axis-alignment: center;
+                        Text {
+                            text: "CONEXÕES";
+                            color: #555555;
+                            font-size: 10px;
+                            font-weight: 700;
+                            letter-spacing: 1px;
+                            vertical-alignment: center;
+                        }
+
+                        Text {
+                            text: root.devices.length > 0 ? (root.devices.length + " ATIVO(S)") : "NENHUM";
+                            color: #444444;
+                            font-size: 9px;
+                            font-weight: 700;
+                            vertical-alignment: center;
+                        }
                     }
 
-                    MonoToggle {
-                        label: "APAGAR TELA AO ESPELHAR";
-                        checked: root.turn_screen_off;
-                        toggled(val) => { root.turn_screen_off = val; }
+                    if !root.has_devices: Rectangle {
+                        height: 48px;
+                        border-radius: 4px;
+                        border-width: 1px;
+                        border-color: #161616;
+                        background: #090909;
+
+                        HorizontalLayout {
+                            padding-left: 12px;
+                            padding-right: 12px;
+                            alignment: start;
+                            cross-axis-alignment: center;
+                            spacing: 10px;
+
+                            Rectangle {
+                                width: 16px;
+                                height: 16px;
+                                clip: false;
+
+                                Image {
+                                    source: @image-url("icons/phone.svg");
+                                    width: 16px;
+                                    height: 16px;
+                                    colorize: #444444;
+                                }
+                            }
+
+                            Text {
+                                text: "Nenhum celular plugado";
+                                color: #555555;
+                                font-size: 11px;
+                                font-weight: 600;
+                                vertical-alignment: center;
+                            }
+                        }
                     }
 
-                    MonoButton {
-                        text: "ATUALIZAR DISPOSITIVOS";
-                        custom_height: 34px;
-                        clicked => { root.refresh_requested(); }
+                    if root.has_devices: ScrollView {
+                        VerticalLayout {
+                            spacing: 6px;
+                            alignment: start;
+
+                            for device[idx] in root.devices: Rectangle {
+                                height: 56px;
+                                border-radius: 4px;
+                                border-width: (root.active_nav == "devices" && root.active_idx == idx) ? 1.5px : 1px;
+                                border-color: (root.active_nav == "devices" && root.active_idx == idx) ? #ffffff : #1e1e1e;
+                                background: (root.active_nav == "devices" && root.active_idx == idx) ? #161616 : (dev_ta.has-hover ? #121212 : #0b0b0b);
+
+                                dev_ta := TouchArea {
+                                    clicked => {
+                                        root.selected_device_index = idx;
+                                        root.active_nav = "devices";
+                                    }
+                                }
+
+                                HorizontalLayout {
+                                    padding-left: 12px;
+                                    padding-right: 12px;
+                                    alignment: space-between;
+                                    cross-axis-alignment: center;
+
+                                    HorizontalLayout {
+                                        alignment: start;
+                                        cross-axis-alignment: center;
+                                        spacing: 10px;
+
+                                        Rectangle {
+                                            width: 16px;
+                                            height: 16px;
+                                            clip: false;
+
+                                            Image {
+                                                source: @image-url("icons/phone.svg");
+                                                width: 16px;
+                                                height: 16px;
+                                                colorize: (root.active_nav == "devices" && root.active_idx == idx) ? #ffffff : #777777;
+                                            }
+                                        }
+
+                                        VerticalLayout {
+                                            alignment: center;
+                                            spacing: 2px;
+
+                                            Text {
+                                                text: device.display_name;
+                                                color: #ffffff;
+                                                font-size: 12px;
+                                                font-weight: 700;
+                                                vertical-alignment: center;
+                                            }
+
+                                            Text {
+                                                text: device.serial;
+                                                color: #666666;
+                                                font-size: 9px;
+                                                vertical-alignment: center;
+                                            }
+                                        }
+                                    }
+
+                                    HorizontalLayout {
+                                        alignment: end;
+                                        cross-axis-alignment: center;
+                                        spacing: 6px;
+
+                                        Rectangle {
+                                            border-radius: 2px;
+                                            border-width: 1px;
+                                            border-color: device.is_mirroring ? #ffffff : (device.is_ready ? #333333 : #222222);
+                                            background: device.is_mirroring ? #ffffff : #000000;
+                                            height: 18px;
+
+                                            HorizontalLayout {
+                                                padding-left: 5px;
+                                                padding-right: 5px;
+                                                alignment: center;
+                                                cross-axis-alignment: center;
+                                                Text {
+                                                    text: device.status_text;
+                                                    color: device.is_mirroring ? #000000 : (device.is_ready ? #bbbbbb : #666666);
+                                                    font-size: 8px;
+                                                    font-weight: 700;
+                                                    vertical-alignment: center;
+                                                }
+                                            }
+                                        }
+
+                                        MonoButton {
+                                            text: "EDITAR";
+                                            custom_height: 22px;
+                                            clicked => { root.start_rename(device.serial, device.display_name); }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
 
-        // ÁREA DIREITA: Espelhamento da tela em moldura e painel de funções
+        // ==========================================
+        // ÁREA DIREITA: Muda conforme a navegação ativa
+        // ==========================================
         Rectangle {
             background: #000000;
 
-            VerticalLayout {
+            // 1. TELA DE CONFIGURAÇÕES
+            if root.active_nav == "settings": VerticalLayout {
+                padding: 28px;
+                spacing: 24px;
+                alignment: start;
+
+                // Cabeçalho de Configurações
+                VerticalLayout {
+                    spacing: 6px;
+                    Text {
+                        text: "CONFIGURAÇÕES";
+                        color: #ffffff;
+                        font-size: 20px;
+                        font-weight: 800;
+                        letter-spacing: 1px;
+                    }
+                    Text {
+                        text: "Preferências de espelhamento, controle de hardware e conexões";
+                        color: #777777;
+                        font-size: 12px;
+                    }
+                }
+
+                Rectangle {
+                    height: 1px;
+                    background: #1a1a1a;
+                }
+
+                // Grupo 1: Espelhamento
+                VerticalLayout {
+                    spacing: 12px;
+
+                    Text {
+                        text: "COMPORTAMENTO DA TELA";
+                        color: #555555;
+                        font-size: 10px;
+                        font-weight: 700;
+                        letter-spacing: 1px;
+                    }
+
+                    Rectangle {
+                        border-radius: 6px;
+                        border-width: 1px;
+                        border-color: #1e1e1e;
+                        background: #090909;
+
+                        VerticalLayout {
+                            padding: 18px;
+                            spacing: 16px;
+
+                            HorizontalLayout {
+                                alignment: space-between;
+                                cross-axis-alignment: center;
+
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    alignment: center;
+
+                                    Text {
+                                        text: "APAGAR TELA AO ESPELHAR";
+                                        color: #ffffff;
+                                        font-size: 13px;
+                                        font-weight: 700;
+                                    }
+
+                                    Text {
+                                        text: "Desliga a tela física do smartphone ao iniciar o espelhamento via scrcpy (--turn-screen-off). Economiza bateria e evita superaquecimento.";
+                                        color: #888888;
+                                        font-size: 11px;
+                                    }
+                                }
+
+                                MonoToggle {
+                                    checked: root.turn_screen_off;
+                                    toggled(val) => {
+                                        root.turn_screen_off = val;
+                                        root.toggle_turn_screen_off(val);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Grupo 2: Sistema e Conexão
+                VerticalLayout {
+                    spacing: 12px;
+
+                    Text {
+                        text: "CONECTIVIDADE E SISTEMA";
+                        color: #555555;
+                        font-size: 10px;
+                        font-weight: 700;
+                        letter-spacing: 1px;
+                    }
+
+                    Rectangle {
+                        border-radius: 6px;
+                        border-width: 1px;
+                        border-color: #1e1e1e;
+                        background: #090909;
+
+                        VerticalLayout {
+                            padding: 18px;
+                            spacing: 16px;
+
+                            HorizontalLayout {
+                                alignment: space-between;
+                                cross-axis-alignment: center;
+
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    alignment: center;
+
+                                    Text {
+                                        text: "DETECÇÃO DE DISPOSITIVOS USB";
+                                        color: #ffffff;
+                                        font-size: 13px;
+                                        font-weight: 700;
+                                    }
+
+                                    Text {
+                                        text: "Reexecuta o reconhecimento de celulares conectados via Android Debug Bridge (ADB).";
+                                        color: #888888;
+                                        font-size: 11px;
+                                    }
+                                }
+
+                                MonoButton {
+                                    text: "ATUALIZAR DISPOSITIVOS";
+                                    custom_height: 34px;
+                                    clicked => { root.refresh_requested(); }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Rodapé Informativo
+                VerticalLayout {
+                    spacing: 4px;
+                    padding-top: 10px;
+
+                    Text {
+                        text: "Mirro Desktop v0.1 • Motor scrcpy C integrado";
+                        color: #444444;
+                        font-size: 10px;
+                        font-weight: 600;
+                    }
+                }
+            }
+
+            // 2. TELA DE DISPOSITIVOS: SEM CELULAR CONECTADO (ZERO MOCKUP)
+            if root.active_nav == "devices" && !root.has_devices: VerticalLayout {
+                alignment: center;
+                padding: 40px;
+
+                HorizontalLayout {
+                    alignment: center;
+
+                    Rectangle {
+                        width: 480px;
+                        border-radius: 8px;
+                        border-width: 1px;
+                        border-color: #1a1a1a;
+                        background: #080808;
+
+                        VerticalLayout {
+                            padding: 32px;
+                            spacing: 22px;
+                            alignment: center;
+
+                            // Emblema central com ícone minimalista de escaneamento de celular
+                            Rectangle {
+                                width: 56px;
+                                height: 56px;
+                                border-radius: 28px;
+                                border-width: 1px;
+                                border-color: #ffffff;
+                                background: #111111;
+
+                                Image {
+                                    source: @image-url("icons/phone-search.svg");
+                                    width: 28px;
+                                    height: 28px;
+                                    colorize: #ffffff;
+                                    x: (parent.width - self.width) / 2;
+                                    y: (parent.height - self.height) / 2;
+                                }
+                            }
+
+                            VerticalLayout {
+                                spacing: 8px;
+                                alignment: center;
+
+                                Text {
+                                    text: "NENHUM DISPOSITIVO CONECTADO";
+                                    color: #ffffff;
+                                    font-size: 15px;
+                                    font-weight: 800;
+                                    letter-spacing: 0.8px;
+                                    horizontal-alignment: center;
+                                }
+
+                                Text {
+                                    text: "Conecte seu celular Android ao computador via cabo USB para iniciar o espelhamento.";
+                                    color: #777777;
+                                    font-size: 12px;
+                                    horizontal-alignment: center;
+                                }
+                            }
+
+                            MonoButton {
+                                text: "ESCANEAR DISPOSITIVOS";
+                                custom_height: 42px;
+                                clicked => { root.refresh_requested(); }
+                            }
+
+                            Rectangle {
+                                height: 1px;
+                                background: #161616;
+                            }
+
+                            // Instruções
+                            VerticalLayout {
+                                spacing: 8px;
+                                alignment: start;
+
+                                Text {
+                                    text: "INSTRUÇÕES:";
+                                    color: #555555;
+                                    font-size: 10px;
+                                    font-weight: 800;
+                                    letter-spacing: 1px;
+                                }
+
+                                Text {
+                                    text: "1. Conecte o cabo USB ao computador e ao smartphone.";
+                                    color: #888888;
+                                    font-size: 11px;
+                                }
+                                Text {
+                                    text: "2. Habilite a 'Depuração USB' nas Opções de Desenvolvedor.";
+                                    color: #888888;
+                                    font-size: 11px;
+                                }
+                                Text {
+                                    text: "3. Se houver aviso na tela do celular, toque em 'Permitir'.";
+                                    color: #888888;
+                                    font-size: 11px;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 3. TELA DE DISPOSITIVOS: COM CELULAR CONECTADO
+            if root.active_nav == "devices" && root.has_devices: VerticalLayout {
                 padding: 20px;
                 spacing: 16px;
 
                 // Barra Superior do Espaço de Trabalho
                 HorizontalLayout {
                     alignment: space-between;
+                    cross-axis-alignment: center;
 
                     VerticalLayout {
                         spacing: 2px;
@@ -702,7 +1104,7 @@ export component AppWindow inherits Window {
                         }
 
                         Text {
-                            text: root.has_selected ? (root.sel_model + " | " + root.sel_serial) : "CONECTE OU SELECIONE UM APARELHO NA BARRA LATERAL";
+                            text: root.has_selected ? (root.sel_model + " | " + root.sel_serial) : "SELECIONE UM APARELHO NA BARRA LATERAL";
                             color: #777777;
                             font-size: 11px;
                         }
@@ -711,6 +1113,7 @@ export component AppWindow inherits Window {
                     HorizontalLayout {
                         spacing: 10px;
                         alignment: center;
+                        cross-axis-alignment: center;
 
                         if root.has_selected && root.sel_ready: MonoButton {
                             text: root.sel_mirroring ? "ENCERRAR" : "ESPELHAR";
@@ -817,6 +1220,7 @@ export component AppWindow inherits Window {
 
                                 HorizontalLayout {
                                     spacing: 8px;
+                                    cross-axis-alignment: center;
 
                                     MonoButton {
                                         text: "VOL +";
@@ -934,6 +1338,7 @@ export component AppWindow inherits Window {
 
                 HorizontalLayout {
                     alignment: end;
+                    cross-axis-alignment: center;
                     spacing: 10px;
 
                     MonoButton {
