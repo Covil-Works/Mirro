@@ -1,0 +1,28 @@
+{
+  "project": {
+    "id": "2b0b8bf3-7740-4b1d-be5f-7ee8959960e6",
+    "name": "mirro"
+  },
+  "next_task_id": 4,
+  "columns": [
+    {
+      "id": "todo",
+      "name": "Todo",
+      "order": 0
+    },
+    {
+      "id": "in-progress",
+      "name": "In Progress",
+      "order": 1
+    },
+    {
+      "id": "done",
+      "name": "Done",
+      "order": 2
+    }
+  ],
+  "board": {
+    "sort": "custom"
+  },
+  "task_model": "default"
+}

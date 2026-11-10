@@ -2,7 +2,7 @@
 /target/
 
 # Configuration generated locally
-config.json
+/config.json
 
 # Downloaded tools bundle (optional to commit or ignore)
 /tools/
