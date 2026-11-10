@@ -6,6 +6,7 @@ use tokio::process::{Child, Command};
 use tokio::sync::{Mutex, RwLock};
 use tracing::{error, info, warn};
 
+use crate::mirror::companion::CompanionManager;
 use crate::tools::locator::Locator;
 
 pub type OnSessionEnded = Box<dyn Fn() + Send + Sync + 'static>;
@@ -15,6 +16,7 @@ pub struct MirrorManager {
     active_child: Arc<Mutex<Option<Child>>>,
     active_serial: Arc<RwLock<Option<String>>>,
     on_ended: Arc<Mutex<Option<OnSessionEnded>>>,
+    companion: CompanionManager,
 }
 
 impl MirrorManager {
@@ -23,6 +25,7 @@ impl MirrorManager {
             active_child: Arc::new(Mutex::new(None)),
             active_serial: Arc::new(RwLock::new(None)),
             on_ended: Arc::new(Mutex::new(None)),
+            companion: CompanionManager::new(),
         }
     }
 
@@ -137,10 +140,14 @@ impl MirrorManager {
             *child_lock = Some(child);
         }
 
+        // Inicia o companion widget flutuante anexado ao scrcpy
+        self.companion.start(serial.clone(), display_name.clone(), self.clone());
+
         // Tarefa em segundo plano para monitorar o encerramento do processo
         let active_serial_clone = self.active_serial.clone();
         let active_child_clone = self.active_child.clone();
         let on_ended_clone = self.on_ended.clone();
+        let companion_clone = self.companion.clone();
         let monitored_serial = serial.clone();
 
         tokio::spawn(async move {
@@ -177,6 +184,8 @@ impl MirrorManager {
                 }
 
                 if finished {
+                    companion_clone.stop();
+
                     let mut serial_lock = active_serial_clone.write().await;
                     if serial_lock.as_deref() == Some(&monitored_serial) {
                         *serial_lock = None;
@@ -195,6 +204,8 @@ impl MirrorManager {
 
     /// Encerra imediatamente a sessão de espelhamento ativa.
     pub async fn stop_mirroring(&self) {
+        self.companion.stop();
+
         let mut child_lock = self.active_child.lock().await;
         if let Some(mut child) = child_lock.take() {
             info!("Encerrando sessão ativa de scrcpy...");

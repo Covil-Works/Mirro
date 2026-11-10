@@ -96,3 +96,21 @@ Este documento centraliza as regras e padrões visuais aplicáveis à interface 
 * **Correto (Padrão Aprovado):**
   - `HorizontalLayout { spacing: 16px; VerticalLayout { horizontal-stretch: 1; Text { text: "..."; wrap: word-wrap; } } MonoToggle { horizontal-stretch: 0; } }`
   - Painéis de configuração e formulários contidos em `ScrollView` com rolagem vertical suave.
+
+---
+
+### [visual-standards-008] Widget Flutuante Complementar (Companion) em Formato Geométrico
+
+* **Severidade:** Obrigatório
+* **Descrição:** O widget flutuante auxiliar de controle durante o espelhamento deve operar em dois estados geométricos bem definidos: estado colapsado (círculo com diâmetro de 52px) e estado expandido (pílula vertical de 52px de largura e 270px de altura com extremidades semicirculares). O widget deve flutuar com posicionamento relativo contínuo anexado ao canto superior direito da janela de espelhamento (com folga óptica de 10px, sem tocar diretamente no frame do scrcpy). A transparência deve ser delegada ao compositor DWM do Windows (`DwmExtendFrameIntoClientArea`), permitindo renderização suave com anti-aliasing por GPU pelo Slint, com dimensionamento físico proporcional à escala DPI do monitor (`GetDpiForWindow`). É estritamente proibido o uso de máscaras binárias GDI (`SetWindowRgn`), que destroem o anti-aliasing e causam bordas serrilhadas.
+* **Justificativa:** Garante atalhos de navegação e controle confortáveis (Voltar, Início, Recentes, Ligar/Desligar tela e Encerrar) sem cortes de layout em monitores de alta densidade de pixels (125%, 150%, 200% DPI) e com bordas curvas suaves de alto padrão estético.
+* **Incorreto (Anti-padrão):**
+  - Utilizar recorte GDI `SetWindowRgn` que gera contornos pontilhados e serrilhados sem anti-aliasing.
+  - Fixar dimensões físicas brutas sem multiplicar pelo fator de escala DPI do monitor, espremendo o layout e cortando botões.
+  - Colar o widget diretamente sobre o vídeo do espelhamento, obstruindo a interface do smartphone.
+  - Deixar o widget flutuante órfão na tela após o encerramento do processo scrcpy.
+* **Correto (Padrão Aprovado):**
+  - Janela sem moldura (`no-frame: true`), fundo transparente (`background: transparent`), sempre no topo (`always-on-top: true`) e composição DWM com margens negativas (`DwmExtendFrameIntoClientArea`).
+  - Conversão dinâmica de medidas lógicas para pixels físicos usando `GetDpiForWindow`.
+  - Transição de estado acionada por clique entre círculo compacto e pílula vertical.
+  - Sincronização automática de ciclo de vida com o processo e janela do scrcpy.
