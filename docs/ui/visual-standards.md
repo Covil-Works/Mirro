@@ -42,7 +42,7 @@ Este documento centraliza as regras e padrões visuais aplicáveis à interface 
   - Centralizar verticalmente os botões da barra lateral.
   - Espalhar opções de configuração em rodapés escondidos.
 * **Correto (Padrão Aprovado):**
-  - `VerticalLayout { alignment: start; }` no container da sidebar com botões alinhados à esquerda: `Configurações` no topo seguido por `Dispositivos`.
+  - `VerticalLayout` no container da sidebar com botões alinhados ao topo (`vertical-stretch: 0`) com `Configurações` seguido por `Dispositivos`, e a seção rolável de dispositivos expandida até a base da janela (`vertical-stretch: 1`).
 
 ---
 
@@ -114,3 +114,34 @@ Este documento centraliza as regras e padrões visuais aplicáveis à interface 
   - Conversão dinâmica de medidas lógicas para pixels físicos usando `GetDpiForWindow`.
   - Transição de estado acionada por clique entre círculo compacto e pílula vertical.
   - Sincronização automática de ciclo de vida com o processo e janela do scrcpy.
+
+---
+
+### [visual-standards-009] Identidade Visual do Smartphone Mockado com Desfoque e Cards de Estado
+
+* **Severidade:** Obrigatório
+* **Descrição:** A tela interna do smartphone mockado na área principal de trabalho deve renderizar a captura real da tela do dispositivo conectado com aplicação de desfoque Gaussiano (blur) em segundo plano, acompanhada de película escura suave para garantir contraste. Em repouso (não espelhado), exibe card central translúcido contendo o nome do dispositivo em destaque (tipografia maior) e o codinome/modelo técnico em corpo menor, sem botão de ação interno (a ação de espelhar permanece centralizada na barra superior da área de trabalho). Quando a sessão de espelhamento for iniciada, o card de transmissão ativa deve ser exibido em estética estritamente monocromática, suprimindo qualquer elemento gráfico colorido (como indicadores circulares ou radares verdes) e mantendo exclusivamente o botão "ENCERRAR SESSÃO".
+* **Justificativa:** Proporciona identificação visual instantânea do dispositivo conectado através de sua própria tela, mantém harmonia óptica com o tema preto e branco da aplicação e evita duplicações desnecessárias de botões de controle na interface.
+* **Incorreto (Anti-padrão):**
+  - Exibir animações ou círculos coloridos verdes no card de transmissão dentro do telefone mockado.
+  - Inserir botão de espelhamento dentro do telefone mockado quando a barra superior já possui controle primário de espelhar.
+  - Deixar a tela do mockup com fundo estático inteiramente preto quando houver captura de tela disponível.
+* **Correto (Padrão Aprovado):**
+  - Capturar a tela via ADB assim que o aparelho for espelhado/conectado, aplicar redimensionamento com filtro bilinear e desfoque Gaussiano, exibindo como plano de fundo da tela interna.
+  - Card central em repouso exibindo apenas nome em destaque e codinome técnico em corpo menor.
+  - Card de transmissão monocromático exibindo "TRANSMISSÃO ATIVA", textos explicativos e o botão "ENCERRAR SESSÃO".
+
+---
+
+### [visual-standards-010] Botões de Ação por Ícones Vetoriais com Tooltips e Atalhos Rápidos Configuráveis
+
+* **Severidade:** Obrigatório
+* **Descrição:** Os botões de hardware e controle no painel lateral de funções do dispositivo conectado devem utilizar exclusivamente ícones vetoriais monocromáticos (sem texto fixo interno no botão), dispostos em linhas horizontais simétricas com expansão flexível uniforme: seção "Navegação" (Voltar, Recentes e Início lado a lado), seção "Botões" (Tela On/Off, Aumentar Volume e Diminuir Volume lado a lado) e seção "Ações" (Captura de Tela e Menu lado a lado). Cada botão deve obrigatoriamente exibir um tooltip flutuante contextual e atualizar o cabeçalho da respectiva seção ao receber hover do mouse. A seção "Atalhos Rápidos" substitui áreas genéricas e deve disponibilizar seletores de ativação/desativação para cada controle fixado no widget flutuante complementar (Companion) da tela espelhada.
+* **Justificativa:** Otimiza o aproveitamento vertical da interface com alinhamento cirúrgico de grade, previne acionamentos acidentais por meio de confirmação em tooltip e permite ao usuário customizar a régua de comandos do widget flutuante conforme seu fluxo de trabalho.
+* **Incorreto (Anti-padrão):**
+  - Empilhar botões com textos extensos em coluna única ("VOLTAR", "INÍCIO", "RECENTES", "TELA ON/OFF") saturando o layout verticalmente.
+  - Deixar botões apenas com ícone sem fornecer tooltip ou indicação visual de hover ao passar o mouse.
+  - Deixar botões do widget flutuante com conjunto fixo sem persistência das preferências do usuário.
+* **Correto (Padrão Aprovado):**
+  - Componente `IconButton` com SVG vetorial, inversão monocromática de estado, proporção simétrica na linha e tooltip instantâneo ao passar o cursor.
+  - Seção "Atalhos Rápidos" com lista rolável contendo ícone, rótulo e checkbox, salvando as escolhas no arquivo de configuração e atualizando o CompanionWindow em tempo real.

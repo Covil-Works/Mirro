@@ -101,6 +101,167 @@ component MonoToggle inherits Rectangle {
     }
 }
 
+component IconButton inherits Rectangle {
+    in property <image> icon;
+    in property <string> tooltip: "";
+    in property <bool> enabled: true;
+    in property <length> custom_height: 36px;
+    out property <bool> has_hover: ta.has-hover;
+    callback clicked();
+
+    height: root.custom_height;
+    horizontal-stretch: 1;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: !root.enabled ? #222222 : #ffffff;
+    background: !root.enabled ? #111111 : (ta.has-hover ? #000000 : #ffffff);
+
+    ta := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => { root.clicked(); }
+    }
+
+    Rectangle {
+        width: 18px;
+        height: 18px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        Image {
+            source: root.icon;
+            width: 18px;
+            height: 18px;
+            colorize: !root.enabled ? #444444 : (ta.has-hover ? #ffffff : #000000);
+        }
+    }
+
+    if ta.has-hover && root.enabled && root.tooltip != "": Rectangle {
+        y: -30px;
+        x: (parent.width - self.width) / 2;
+        height: 22px;
+        border-radius: 4px;
+        border-width: 1px;
+        border-color: #ffffff;
+        background: #000000;
+        z: 200;
+
+        HorizontalLayout {
+            padding-left: 8px;
+            padding-right: 8px;
+            alignment: center;
+            cross-axis-alignment: center;
+
+            Text {
+                text: root.tooltip;
+                color: #ffffff;
+                font-size: 10px;
+                font-weight: 700;
+                letter-spacing: 0.5px;
+                vertical-alignment: center;
+                horizontal-alignment: center;
+            }
+        }
+    }
+}
+
+component QuickShortcutItem inherits Rectangle {
+    in property <image> icon;
+    in property <string> label;
+    in-out property <bool> checked: false;
+    callback toggled(bool);
+
+    height: 28px;
+    background: ta.has-hover ? #121212 : transparent;
+    border-radius: 4px;
+
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.checked = !root.checked;
+            root.toggled(root.checked);
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 8px;
+        alignment: space-between;
+        cross-axis-alignment: center;
+
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            cross-axis-alignment: center;
+
+            Rectangle {
+                width: 14px;
+                height: 14px;
+                Image {
+                    source: root.icon;
+                    width: 14px;
+                    height: 14px;
+                    colorize: root.checked ? #ffffff : #555555;
+                }
+            }
+
+            Text {
+                text: root.label;
+                color: root.checked ? #ffffff : (ta.has-hover ? #cccccc : #777777);
+                font-size: 11px;
+                font-weight: 600;
+                vertical-alignment: center;
+            }
+        }
+
+        Rectangle {
+            width: 14px;
+            height: 14px;
+            border-radius: 2px;
+            border-width: 1px;
+            border-color: root.checked ? #ffffff : #333333;
+            background: root.checked ? #ffffff : (ta.has-hover ? #1a1a1a : #000000);
+
+            if root.checked: Rectangle {
+                width: 6px;
+                height: 6px;
+                border-radius: 1px;
+                background: #000000;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+            }
+        }
+    }
+}
+
+component CompButton inherits Rectangle {
+    in property <image> icon;
+    callback clicked();
+
+    width: 34px;
+    height: 34px;
+    border-radius: 17px;
+    background: cta.has-hover ? #ffffff : transparent;
+
+    cta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+
+    Rectangle {
+        width: 16px;
+        height: 16px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        Image {
+            source: root.icon;
+            width: 16px;
+            height: 16px;
+            colorize: cta.has-hover ? #000000 : #ffffff;
+        }
+    }
+}
+
 component NavButton inherits Rectangle {
     in property <image> icon_image;
     in property <string> label;
@@ -192,6 +353,8 @@ component GenericPhoneFrame inherits Rectangle {
     in property <bool> is_mirroring: false;
     in property <bool> is_unauthorized: false;
     in property <bool> has_device: false;
+    in property <image> screen_image;
+    in property <bool> has_screen_image: false;
     callback mirror_clicked();
 
     width: 296px;
@@ -295,6 +458,25 @@ component GenericPhoneFrame inherits Rectangle {
             border-width: 1px;
             border-color: #1a1a1a;
             clip: true;
+
+            // Fundo da tela do smartphone com captura real desfocada (blur)
+            if root.has_screen_image: Image {
+                x: 0px;
+                y: 0px;
+                width: parent.width;
+                height: parent.height;
+                source: root.screen_image;
+                image-fit: cover;
+            }
+
+            // Película escura sutil sobre o desfoque para contraste e legibilidade
+            if root.has_screen_image: Rectangle {
+                x: 0px;
+                y: 0px;
+                width: parent.width;
+                height: parent.height;
+                background: #00000055;
+            }
 
             // Ilha Dinâmica (Dynamic Island) no topo da tela do iPhone
             Rectangle {
@@ -455,24 +637,40 @@ component GenericPhoneFrame inherits Rectangle {
 
                     if root.has_device && root.is_ready && !root.is_mirroring: VerticalLayout {
                         alignment: center;
-                        spacing: 12px;
-                        Text {
-                            text: root.display_name;
-                            color: #ffffff;
-                            font-size: 15px;
-                            font-weight: 700;
-                            horizontal-alignment: center;
-                        }
-                        Text {
-                            text: root.model;
-                            color: #777777;
-                            font-size: 11px;
-                            horizontal-alignment: center;
-                        }
-                        MonoButton {
-                            text: "ESPELHAR";
-                            custom_height: 34px;
-                            clicked => { root.mirror_clicked(); }
+                        spacing: 16px;
+
+                        // Card central do dispositivo conectado (identidade visual sobre a tela desfocada)
+                        Rectangle {
+                            border-radius: 12px;
+                            border-width: 1px;
+                            border-color: #222222;
+                            background: #090909e6;
+
+                            VerticalLayout {
+                                padding: 20px;
+                                spacing: 6px;
+                                alignment: center;
+
+                                // Nome do dispositivo em maior
+                                Text {
+                                    text: root.display_name;
+                                    color: #ffffff;
+                                    font-size: 16px;
+                                    font-weight: 800;
+                                    letter-spacing: 0.3px;
+                                    horizontal-alignment: center;
+                                    wrap: word-wrap;
+                                }
+
+                                // Códigonome do dispositivo em menor
+                                Text {
+                                    text: root.model;
+                                    color: #777777;
+                                    font-size: 11px;
+                                    font-weight: 600;
+                                    horizontal-alignment: center;
+                                }
+                            }
                         }
                     }
 
@@ -480,59 +678,26 @@ component GenericPhoneFrame inherits Rectangle {
                         alignment: center;
                         spacing: 16px;
 
-                        // Card central de monitoramento da transmissão ativa
+                        // Card central de monitoramento da transmissão ativa (sem a bola verde)
                         Rectangle {
                             border-radius: 12px;
                             border-width: 1px;
                             border-color: #222222;
-                            background: #090909;
+                            background: #090909e6;
 
                             VerticalLayout {
                                 padding: 18px;
                                 spacing: 14px;
                                 alignment: center;
 
-                                // Indicador visual em radar (pulse beacon verde esmeralda)
-                                HorizontalLayout {
-                                    alignment: center;
-                                    cross-axis-alignment: center;
-
-                                    Rectangle {
-                                        width: 38px;
-                                        height: 38px;
-                                        border-radius: 19px;
-                                        background: #22c55e14;
-                                        border-width: 1px;
-                                        border-color: #22c55e33;
-
-                                        Rectangle {
-                                            width: 22px;
-                                            height: 22px;
-                                            border-radius: 11px;
-                                            background: #22c55e28;
-                                            x: (parent.width - self.width) / 2;
-                                            y: (parent.height - self.height) / 2;
-
-                                            Rectangle {
-                                                width: 8px;
-                                                height: 8px;
-                                                border-radius: 4px;
-                                                background: #22c55e;
-                                                x: (parent.width - self.width) / 2;
-                                                y: (parent.height - self.height) / 2;
-                                            }
-                                        }
-                                    }
-                                }
-
-                                // Tipografia e hierarquia de status
+                                // Tipografia e hierarquia de status monocromática
                                 VerticalLayout {
                                     spacing: 3px;
                                     alignment: center;
 
                                     Text {
                                         text: "TRANSMISSÃO ATIVA";
-                                        color: #22c55e;
+                                        color: #ffffff;
                                         font-size: 9px;
                                         font-weight: 800;
                                         letter-spacing: 1.5px;
@@ -546,6 +711,7 @@ component GenericPhoneFrame inherits Rectangle {
                                         font-weight: 800;
                                         letter-spacing: 0.3px;
                                         horizontal-alignment: center;
+                                        wrap: word-wrap;
                                     }
 
                                     Text {
@@ -612,15 +778,27 @@ export component AppWindow inherits Window {
     in-out property <bool> mirror_always_on_top: true;
     in-out property <int> selected_device_index: 0;
     in-out property <string> active_nav: "devices";
+    in-out property <image> screen_image;
+    in-out property <bool> has_screen_image: false;
+    in-out property <bool> quick_back: true;
+    in-out property <bool> quick_recents: true;
+    in-out property <bool> quick_home: true;
+    in-out property <bool> quick_power: true;
+    in-out property <bool> quick_volup: false;
+    in-out property <bool> quick_voldown: false;
+    in-out property <bool> quick_screenshot: false;
+    in-out property <bool> quick_menu: false;
 
     callback refresh_requested();
     callback mirror_toggled(string, bool, bool);
+    callback device_selected(string);
     callback nav_action(string, string);
     callback start_rename(string, string);
     callback confirm_rename(string, string);
     callback cancel_rename();
     callback toggle_turn_screen_off(bool);
     callback toggle_always_on_top(bool);
+    callback toggle_quick_shortcut(string, bool);
 
     property <bool> has_devices: root.devices.length > 0;
     property <int> active_idx: (root.selected_device_index >= 0 && root.selected_device_index < root.devices.length) ? root.selected_device_index : 0;
@@ -651,12 +829,12 @@ export component AppWindow inherits Window {
             }
 
             VerticalLayout {
-                alignment: start;
                 padding: 16px;
                 spacing: 12px;
 
                 // Cabeçalho da Sidebar (Topo)
                 HorizontalLayout {
+                    vertical-stretch: 0;
                     alignment: space-between;
                     cross-axis-alignment: center;
 
@@ -694,6 +872,7 @@ export component AppWindow inherits Window {
                 // Divisor
                 Rectangle {
                     height: 1px;
+                    vertical-stretch: 0;
                     background: #1a1a1a;
                 }
 
@@ -703,6 +882,7 @@ export component AppWindow inherits Window {
                 NavButton {
                     icon_image: @image-url("icons/settings.svg");
                     label: "CONFIGURAÇÕES";
+                    vertical-stretch: 0;
                     is_active: root.active_nav == "settings";
                     clicked => { root.active_nav = "settings"; }
                 }
@@ -711,6 +891,7 @@ export component AppWindow inherits Window {
                     icon_image: @image-url("icons/phone.svg");
                     label: "DISPOSITIVOS";
                     badge_text: root.devices.length > 0 ? (root.devices.length + "") : "";
+                    vertical-stretch: 0;
                     is_active: root.active_nav == "devices";
                     clicked => { root.active_nav = "devices"; }
                 }
@@ -718,6 +899,7 @@ export component AppWindow inherits Window {
                 // Divisor
                 Rectangle {
                     height: 1px;
+                    vertical-stretch: 0;
                     background: #1a1a1a;
                 }
 
@@ -725,10 +907,11 @@ export component AppWindow inherits Window {
                 // SEÇÃO 2: APARELHOS CONECTADOS
                 // ==========================================
                 VerticalLayout {
-                    alignment: start;
+                    vertical-stretch: 1;
                     spacing: 8px;
 
                     HorizontalLayout {
+                        vertical-stretch: 0;
                         alignment: space-between;
                         cross-axis-alignment: center;
                         Text {
@@ -751,6 +934,7 @@ export component AppWindow inherits Window {
 
                     if !root.has_devices: Rectangle {
                         height: 48px;
+                        vertical-stretch: 0;
                         border-radius: 4px;
                         border-width: 1px;
                         border-color: #161616;
@@ -786,7 +970,14 @@ export component AppWindow inherits Window {
                         }
                     }
 
+                    if !root.has_devices: Rectangle {
+                        vertical-stretch: 1;
+                        background: transparent;
+                    }
+
                     if root.has_devices: ScrollView {
+                        vertical-stretch: 1;
+
                         VerticalLayout {
                             spacing: 6px;
                             alignment: start;
@@ -802,6 +993,7 @@ export component AppWindow inherits Window {
                                     clicked => {
                                         root.selected_device_index = idx;
                                         root.active_nav = "devices";
+                                        root.device_selected(device.serial);
                                     }
                                 }
 
@@ -1265,12 +1457,14 @@ export component AppWindow inherits Window {
                         is_mirroring: root.sel_mirroring;
                         is_unauthorized: root.sel_unauthorized;
                         has_device: root.has_selected;
+                        screen_image: root.screen_image;
+                        has_screen_image: root.has_screen_image;
                         mirror_clicked => { root.mirror_toggled(root.sel_serial, root.turn_screen_off, root.mirror_always_on_top); }
                     }
 
                     // Painel Lateral de Funções do Telefone
                     Rectangle {
-                        width: 220px;
+                        width: 240px;
                         height: 580px;
                         border-radius: 8px;
                         border-width: 1px;
@@ -1279,135 +1473,328 @@ export component AppWindow inherits Window {
 
                         VerticalLayout {
                             padding: 16px;
-                            spacing: 16px;
+                            spacing: 14px;
 
-                            // Grupo 1: Navegação do Android
+                            // ==========================================
+                            // SEÇÃO 1: NAVEGAÇÃO (3 botões em linha, só ícone + tooltip)
+                            // ==========================================
                             VerticalLayout {
                                 spacing: 8px;
 
-                                Text {
-                                    text: "NAVEGAÇÃO";
-                                    color: #666666;
-                                    font-size: 10px;
-                                    font-weight: 700;
-                                    letter-spacing: 1px;
-                                }
+                                HorizontalLayout {
+                                    alignment: space-between;
+                                    cross-axis-alignment: center;
 
-                                MonoButton {
-                                    text: "VOLTAR";
-                                    enabled: root.has_selected && root.sel_ready;
-                                    custom_height: 32px;
-                                    clicked => { root.nav_action(root.sel_serial, "back"); }
-                                }
+                                    Text {
+                                        text: "NAVEGAÇÃO";
+                                        color: #666666;
+                                        font-size: 10px;
+                                        font-weight: 700;
+                                        letter-spacing: 1px;
+                                        vertical-alignment: center;
+                                    }
 
-                                MonoButton {
-                                    text: "INÍCIO";
-                                    enabled: root.has_selected && root.sel_ready;
-                                    custom_height: 32px;
-                                    clicked => { root.nav_action(root.sel_serial, "home"); }
-                                }
-
-                                MonoButton {
-                                    text: "RECENTES";
-                                    enabled: root.has_selected && root.sel_ready;
-                                    custom_height: 32px;
-                                    clicked => { root.nav_action(root.sel_serial, "recents"); }
-                                }
-
-                                MonoButton {
-                                    text: "TELA ON/OFF";
-                                    enabled: root.has_selected && root.sel_ready;
-                                    custom_height: 32px;
-                                    clicked => { root.nav_action(root.sel_serial, "power"); }
-                                }
-                            }
-
-                            // Grupo 2: Áudio
-                            VerticalLayout {
-                                spacing: 8px;
-
-                                Text {
-                                    text: "VOLUME";
-                                    color: #666666;
-                                    font-size: 10px;
-                                    font-weight: 700;
-                                    letter-spacing: 1px;
+                                    if btn_back.has_hover: Text {
+                                        text: "VOLTAR";
+                                        color: #ffffff;
+                                        font-size: 10px;
+                                        font-weight: 700;
+                                        letter-spacing: 0.5px;
+                                    }
+                                    if btn_recents.has_hover: Text {
+                                        text: "RECENTES";
+                                        color: #ffffff;
+                                        font-size: 10px;
+                                        font-weight: 700;
+                                        letter-spacing: 0.5px;
+                                    }
+                                    if btn_home.has_hover: Text {
+                                        text: "INÍCIO";
+                                        color: #ffffff;
+                                        font-size: 10px;
+                                        font-weight: 700;
+                                        letter-spacing: 0.5px;
+                                    }
                                 }
 
                                 HorizontalLayout {
                                     spacing: 8px;
                                     cross-axis-alignment: center;
 
-                                    MonoButton {
-                                        text: "VOL +";
+                                    btn_back := IconButton {
+                                        icon: @image-url("icons/back.svg");
+                                        tooltip: "Voltar";
                                         enabled: root.has_selected && root.sel_ready;
-                                        custom_height: 32px;
+                                        clicked => { root.nav_action(root.sel_serial, "back"); }
+                                    }
+
+                                    btn_recents := IconButton {
+                                        icon: @image-url("icons/recents.svg");
+                                        tooltip: "Recentes";
+                                        enabled: root.has_selected && root.sel_ready;
+                                        clicked => { root.nav_action(root.sel_serial, "recents"); }
+                                    }
+
+                                    btn_home := IconButton {
+                                        icon: @image-url("icons/home.svg");
+                                        tooltip: "Início";
+                                        enabled: root.has_selected && root.sel_ready;
+                                        clicked => { root.nav_action(root.sel_serial, "home"); }
+                                    }
+                                }
+                            }
+
+                            // Divisor
+                            Rectangle {
+                                height: 1px;
+                                background: #161616;
+                            }
+
+                            // ==========================================
+                            // SEÇÃO 2: BOTÕES (Tela On/Off, Aumentar Volume, Diminuir Volume)
+                            // ==========================================
+                            VerticalLayout {
+                                spacing: 8px;
+
+                                HorizontalLayout {
+                                    alignment: space-between;
+                                    cross-axis-alignment: center;
+
+                                    Text {
+                                        text: "BOTÕES";
+                                        color: #666666;
+                                        font-size: 10px;
+                                        font-weight: 700;
+                                        letter-spacing: 1px;
+                                        vertical-alignment: center;
+                                    }
+
+                                    if btn_power.has_hover: Text {
+                                        text: "TELA ON/OFF";
+                                        color: #ffffff;
+                                        font-size: 10px;
+                                        font-weight: 700;
+                                        letter-spacing: 0.5px;
+                                    }
+                                    if btn_volup.has_hover: Text {
+                                        text: "VOLUME +";
+                                        color: #ffffff;
+                                        font-size: 10px;
+                                        font-weight: 700;
+                                        letter-spacing: 0.5px;
+                                    }
+                                    if btn_voldown.has_hover: Text {
+                                        text: "VOLUME -";
+                                        color: #ffffff;
+                                        font-size: 10px;
+                                        font-weight: 700;
+                                        letter-spacing: 0.5px;
+                                    }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    cross-axis-alignment: center;
+
+                                    btn_power := IconButton {
+                                        icon: @image-url("icons/power.svg");
+                                        tooltip: "Tela On/Off";
+                                        enabled: root.has_selected && root.sel_ready;
+                                        clicked => { root.nav_action(root.sel_serial, "power"); }
+                                    }
+
+                                    btn_volup := IconButton {
+                                        icon: @image-url("icons/volume-up.svg");
+                                        tooltip: "Aumentar Volume";
+                                        enabled: root.has_selected && root.sel_ready;
                                         clicked => { root.nav_action(root.sel_serial, "volup"); }
                                     }
 
-                                    MonoButton {
-                                        text: "VOL -";
+                                    btn_voldown := IconButton {
+                                        icon: @image-url("icons/volume-down.svg");
+                                        tooltip: "Diminuir Volume";
                                         enabled: root.has_selected && root.sel_ready;
-                                        custom_height: 32px;
                                         clicked => { root.nav_action(root.sel_serial, "voldown"); }
                                     }
                                 }
                             }
 
-                            // Grupo 3: Ações do Dispositivo
+                            // Divisor
+                            Rectangle {
+                                height: 1px;
+                                background: #161616;
+                            }
+
+                            // ==========================================
+                            // SEÇÃO 3: AÇÕES (Print e Menu lado a lado)
+                            // ==========================================
                             VerticalLayout {
                                 spacing: 8px;
 
-                                Text {
-                                    text: "AÇÕES";
-                                    color: #666666;
-                                    font-size: 10px;
-                                    font-weight: 700;
-                                    letter-spacing: 1px;
+                                HorizontalLayout {
+                                    alignment: space-between;
+                                    cross-axis-alignment: center;
+
+                                    Text {
+                                        text: "AÇÕES";
+                                        color: #666666;
+                                        font-size: 10px;
+                                        font-weight: 700;
+                                        letter-spacing: 1px;
+                                        vertical-alignment: center;
+                                    }
+
+                                    if btn_screenshot.has_hover: Text {
+                                        text: "CAPTURA DE TELA";
+                                        color: #ffffff;
+                                        font-size: 10px;
+                                        font-weight: 700;
+                                        letter-spacing: 0.5px;
+                                    }
+                                    if btn_menu.has_hover: Text {
+                                        text: "MENU";
+                                        color: #ffffff;
+                                        font-size: 10px;
+                                        font-weight: 700;
+                                        letter-spacing: 0.5px;
+                                    }
                                 }
 
-                                MonoButton {
-                                    text: "CAPTURA DE TELA";
-                                    enabled: root.has_selected && root.sel_ready;
-                                    custom_height: 32px;
-                                    clicked => { root.nav_action(root.sel_serial, "screenshot"); }
-                                }
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    cross-axis-alignment: center;
 
-                                MonoButton {
-                                    text: "MENU";
-                                    enabled: root.has_selected && root.sel_ready;
-                                    custom_height: 32px;
-                                    clicked => { root.nav_action(root.sel_serial, "menu"); }
+                                    btn_screenshot := IconButton {
+                                        icon: @image-url("icons/screenshot.svg");
+                                        tooltip: "Captura de Tela";
+                                        enabled: root.has_selected && root.sel_ready;
+                                        clicked => { root.nav_action(root.sel_serial, "screenshot"); }
+                                    }
+
+                                    btn_menu := IconButton {
+                                        icon: @image-url("icons/menu.svg");
+                                        tooltip: "Menu";
+                                        enabled: root.has_selected && root.sel_ready;
+                                        clicked => { root.nav_action(root.sel_serial, "menu"); }
+                                    }
                                 }
                             }
 
-                            // Grupo 4: Área para Funções Futuras
-                            VerticalLayout {
-                                spacing: 6px;
+                            // Divisor
+                            Rectangle {
+                                height: 1px;
+                                background: #161616;
+                            }
 
-                                Text {
-                                    text: "FUNÇÕES ADICIONAIS";
-                                    color: #444444;
-                                    font-size: 10px;
-                                    font-weight: 700;
-                                    letter-spacing: 1px;
+                            // ==========================================
+                            // SEÇÃO 4: ATALHOS RÁPIDOS (Configuração do Widget Flutuante)
+                            // ==========================================
+                            VerticalLayout {
+                                spacing: 8px;
+                                vertical-stretch: 1;
+
+                                VerticalLayout {
+                                    spacing: 2px;
+                                    Text {
+                                        text: "ATALHOS RÁPIDOS";
+                                        color: #666666;
+                                        font-size: 10px;
+                                        font-weight: 700;
+                                        letter-spacing: 1px;
+                                    }
+                                    Text {
+                                        text: "Escolha quais botões vão para o widget flutuante:";
+                                        color: #444444;
+                                        font-size: 9px;
+                                        wrap: word-wrap;
+                                    }
                                 }
 
-                                Rectangle {
-                                    height: 56px;
-                                    border-radius: 4px;
-                                    border-width: 1px;
-                                    border-color: #1a1a1a;
-                                    background: #000000;
+                                ScrollView {
+                                    vertical-stretch: 1;
 
                                     VerticalLayout {
-                                        alignment: center;
-                                        Text {
-                                            text: "+ ADICIONAR";
-                                            color: #333333;
-                                            font-size: 10px;
-                                            font-weight: 700;
-                                            horizontal-alignment: center;
+                                        spacing: 2px;
+                                        alignment: start;
+
+                                        QuickShortcutItem {
+                                            icon: @image-url("icons/back.svg");
+                                            label: "Voltar";
+                                            checked: root.quick_back;
+                                            toggled(val) => {
+                                                root.quick_back = val;
+                                                root.toggle_quick_shortcut("back", val);
+                                            }
+                                        }
+
+                                        QuickShortcutItem {
+                                            icon: @image-url("icons/recents.svg");
+                                            label: "Recentes";
+                                            checked: root.quick_recents;
+                                            toggled(val) => {
+                                                root.quick_recents = val;
+                                                root.toggle_quick_shortcut("recents", val);
+                                            }
+                                        }
+
+                                        QuickShortcutItem {
+                                            icon: @image-url("icons/home.svg");
+                                            label: "Início";
+                                            checked: root.quick_home;
+                                            toggled(val) => {
+                                                root.quick_home = val;
+                                                root.toggle_quick_shortcut("home", val);
+                                            }
+                                        }
+
+                                        QuickShortcutItem {
+                                            icon: @image-url("icons/power.svg");
+                                            label: "Tela On/Off";
+                                            checked: root.quick_power;
+                                            toggled(val) => {
+                                                root.quick_power = val;
+                                                root.toggle_quick_shortcut("power", val);
+                                            }
+                                        }
+
+                                        QuickShortcutItem {
+                                            icon: @image-url("icons/volume-up.svg");
+                                            label: "Volume +";
+                                            checked: root.quick_volup;
+                                            toggled(val) => {
+                                                root.quick_volup = val;
+                                                root.toggle_quick_shortcut("volup", val);
+                                            }
+                                        }
+
+                                        QuickShortcutItem {
+                                            icon: @image-url("icons/volume-down.svg");
+                                            label: "Volume -";
+                                            checked: root.quick_voldown;
+                                            toggled(val) => {
+                                                root.quick_voldown = val;
+                                                root.toggle_quick_shortcut("voldown", val);
+                                            }
+                                        }
+
+                                        QuickShortcutItem {
+                                            icon: @image-url("icons/screenshot.svg");
+                                            label: "Captura de Tela";
+                                            checked: root.quick_screenshot;
+                                            toggled(val) => {
+                                                root.quick_screenshot = val;
+                                                root.toggle_quick_shortcut("screenshot", val);
+                                            }
+                                        }
+
+                                        QuickShortcutItem {
+                                            icon: @image-url("icons/menu.svg");
+                                            label: "Menu";
+                                            checked: root.quick_menu;
+                                            toggled(val) => {
+                                                root.quick_menu = val;
+                                                root.toggle_quick_shortcut("menu", val);
+                                            }
                                         }
                                     }
                                 }
@@ -1482,12 +1869,30 @@ export component CompanionWindow inherits Window {
 
     in-out property <bool> is_expanded: false;
     in property <string> device_serial: "";
+    in-out property <bool> show_back: true;
+    in-out property <bool> show_recents: true;
+    in-out property <bool> show_home: true;
+    in-out property <bool> show_power: true;
+    in-out property <bool> show_volup: false;
+    in-out property <bool> show_voldown: false;
+    in-out property <bool> show_screenshot: false;
+    in-out property <bool> show_menu: false;
 
     callback toggle_expanded();
     callback action_triggered(string);
 
+    property <int> active_count: (root.show_back ? 1 : 0) +
+                                 (root.show_recents ? 1 : 0) +
+                                 (root.show_home ? 1 : 0) +
+                                 (root.show_power ? 1 : 0) +
+                                 (root.show_volup ? 1 : 0) +
+                                 (root.show_voldown ? 1 : 0) +
+                                 (root.show_screenshot ? 1 : 0) +
+                                 (root.show_menu ? 1 : 0) +
+                                 1;
+
     width: 52px;
-    height: root.is_expanded ? 270px : 52px;
+    height: root.is_expanded ? (56px + root.active_count * 39px) : 52px;
 
     main_container := Rectangle {
         width: 100%;
@@ -1504,16 +1909,21 @@ export component CompanionWindow inherits Window {
             background: circle_ta.has-hover ? #ffffff : #000000;
 
             circle_ta := TouchArea {
+                mouse-cursor: pointer;
                 clicked => { root.toggle_expanded(); }
             }
 
-            Text {
-                text: "≡";
-                color: circle_ta.has-hover ? #000000 : #ffffff;
-                font-size: 20px;
-                font-weight: 700;
-                horizontal-alignment: center;
-                vertical-alignment: center;
+            Rectangle {
+                width: 20px;
+                height: 20px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                Image {
+                    source: @image-url("icons/menu.svg");
+                    width: 20px;
+                    height: 20px;
+                    colorize: circle_ta.has-hover ? #000000 : #ffffff;
+                }
             }
         }
 
@@ -1534,6 +1944,7 @@ export component CompanionWindow inherits Window {
                 background: collapse_ta.has-hover ? #ffffff : #111111;
 
                 collapse_ta := TouchArea {
+                    mouse-cursor: pointer;
                     clicked => { root.toggle_expanded(); }
                 }
 
@@ -1554,106 +1965,57 @@ export component CompanionWindow inherits Window {
                 background: #333333;
             }
 
-            // Voltar [ ◀ ]
-            Rectangle {
-                width: 34px;
-                height: 34px;
-                border-radius: 17px;
-                background: back_ta.has-hover ? #ffffff : transparent;
-
-                back_ta := TouchArea {
-                    clicked => { root.action_triggered("back"); }
-                }
-
-                Text {
-                    text: "◀";
-                    color: back_ta.has-hover ? #000000 : #ffffff;
-                    font-size: 12px;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                }
+            if root.show_back: CompButton {
+                icon: @image-url("icons/back.svg");
+                clicked => { root.action_triggered("back"); }
             }
 
-            // Início [ ● ]
-            Rectangle {
-                width: 34px;
-                height: 34px;
-                border-radius: 17px;
-                background: home_ta.has-hover ? #ffffff : transparent;
-
-                home_ta := TouchArea {
-                    clicked => { root.action_triggered("home"); }
-                }
-
-                Text {
-                    text: "●";
-                    color: home_ta.has-hover ? #000000 : #ffffff;
-                    font-size: 11px;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                }
+            if root.show_recents: CompButton {
+                icon: @image-url("icons/recents.svg");
+                clicked => { root.action_triggered("recents"); }
             }
 
-            // Recentes [ ≡ ]
-            Rectangle {
-                width: 34px;
-                height: 34px;
-                border-radius: 17px;
-                background: recents_ta.has-hover ? #ffffff : transparent;
-
-                recents_ta := TouchArea {
-                    clicked => { root.action_triggered("recents"); }
-                }
-
-                Text {
-                    text: "≡";
-                    color: recents_ta.has-hover ? #000000 : #ffffff;
-                    font-size: 15px;
-                    font-weight: 700;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                }
+            if root.show_home: CompButton {
+                icon: @image-url("icons/home.svg");
+                clicked => { root.action_triggered("home"); }
             }
 
-            // Ligar/Desligar tela [ ⏻ ]
-            Rectangle {
-                width: 34px;
-                height: 34px;
-                border-radius: 17px;
-                background: power_ta.has-hover ? #ffffff : transparent;
-
-                power_ta := TouchArea {
-                    clicked => { root.action_triggered("power"); }
-                }
-
-                Text {
-                    text: "⏻";
-                    color: power_ta.has-hover ? #000000 : #ffffff;
-                    font-size: 13px;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                }
+            if root.show_power: CompButton {
+                icon: @image-url("icons/power.svg");
+                clicked => { root.action_triggered("power"); }
             }
 
-            // Encerrar espelhamento [ ✕ ]
+            if root.show_volup: CompButton {
+                icon: @image-url("icons/volume-up.svg");
+                clicked => { root.action_triggered("volup"); }
+            }
+
+            if root.show_voldown: CompButton {
+                icon: @image-url("icons/volume-down.svg");
+                clicked => { root.action_triggered("voldown"); }
+            }
+
+            if root.show_screenshot: CompButton {
+                icon: @image-url("icons/screenshot.svg");
+                clicked => { root.action_triggered("screenshot"); }
+            }
+
+            if root.show_menu: CompButton {
+                icon: @image-url("icons/menu.svg");
+                clicked => { root.action_triggered("menu"); }
+            }
+
+            // Linha divisória sutil
             Rectangle {
-                width: 34px;
-                height: 34px;
-                border-radius: 17px;
-                background: close_ta.has-hover ? #ffffff : transparent;
+                width: 24px;
+                height: 1px;
+                background: #333333;
+            }
 
-                close_ta := TouchArea {
-                    clicked => { root.action_triggered("close"); }
-                }
-
-                Text {
-                    text: "✕";
-                    color: close_ta.has-hover ? #000000 : #ffffff;
-                    font-size: 12px;
-                    font-weight: 700;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                }
+            // Encerrar espelhamento
+            CompButton {
+                icon: @image-url("icons/close.svg");
+                clicked => { root.action_triggered("close"); }
             }
         }
     }

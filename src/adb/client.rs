@@ -119,6 +119,29 @@ impl AdbClient {
         Self::parse_devices_output(output)
     }
 
+    pub async fn capture_screenshot(serial: &str) -> Option<Vec<u8>> {
+        let adb_path = Locator::get_adb_path();
+        let mut cmd = Command::new(&adb_path);
+        cmd.args(["-s", serial, "exec-out", "screencap", "-p"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .creation_flags(CREATE_NO_WINDOW);
+
+        let output = match cmd.output().await {
+            Ok(out) => out,
+            Err(e) => {
+                error!("Falha ao capturar screenshot via ADB: {:?}", e);
+                return None;
+            }
+        };
+
+        if !output.status.success() || output.stdout.is_empty() {
+            return None;
+        }
+
+        Some(output.stdout)
+    }
+
     /// Envia um keyevent Android para o dispositivo (Voltar, Home, Recentes, Power).
     pub async fn send_keyevent(serial: &str, keycode: u32) -> Result<(), String> {
         let adb_path = Locator::get_adb_path();
@@ -166,5 +189,20 @@ mod tests {
 
         assert_eq!(devices[2].serial, "EMULATOR33X");
         assert_eq!(devices[2].status, DeviceStatus::Offline);
+    }
+
+    #[tokio::test]
+    async fn test_capture_live_device() {
+        let devices = AdbClient::list_devices().await;
+        if let Some(dev) = devices.first() {
+            if dev.status == DeviceStatus::Ready {
+                let bytes = AdbClient::capture_screenshot(&dev.serial).await;
+                assert!(bytes.is_some(), "Screenshot capture should succeed");
+                let data = bytes.unwrap();
+                assert!(data.len() > 1000, "Screenshot should have data");
+                let img = image::load_from_memory(&data);
+                assert!(img.is_ok(), "Screenshot should be valid PNG");
+            }
+        }
     }
 }

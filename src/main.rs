@@ -8,15 +8,26 @@ use tracing_subscriber::FmtSubscriber;
 mod adb;
 mod config;
 mod mirror;
+mod snapshot;
 mod tools;
 
 use adb::{AdbClient, DeviceStatus};
 use config::ConfigManager;
 use mirror::MirrorManager;
+use snapshot::SnapshotManager;
 
-async fn update_devices(mirror_mgr: &MirrorManager, ui_weak: slint::Weak<AppWindow>) {
+async fn update_devices(
+    mirror_mgr: &MirrorManager,
+    snapshot_mgr: &SnapshotManager,
+    ui_weak: slint::Weak<AppWindow>,
+) {
     let devices = AdbClient::list_devices().await;
     let active_serial = mirror_mgr.get_active_serial().await;
+    let has_any_ready = devices.iter().any(|d| d.status == DeviceStatus::Ready);
+    let first_ready_serial = devices
+        .iter()
+        .find(|d| d.status == DeviceStatus::Ready)
+        .map(|d| d.serial.clone());
 
     let device_cards: Vec<DeviceCardData> = devices
         .into_iter()
@@ -48,12 +59,27 @@ async fn update_devices(mirror_mgr: &MirrorManager, ui_weak: slint::Weak<AppWind
         })
         .collect();
 
+    let ui_weak_clone = ui_weak.clone();
     let _ = slint::invoke_from_event_loop(move || {
-        if let Some(ui) = ui_weak.upgrade() {
+        if let Some(ui) = ui_weak_clone.upgrade() {
             let model = Rc::new(VecModel::from(device_cards));
             ui.set_devices(ModelRc::from(model));
+            if !has_any_ready {
+                ui.set_has_screen_image(false);
+            }
         }
     });
+
+    // Se houver aparelho pronto e nenhum screenshot em cache para ele, dispara a captura inicial com desfoque
+    if let Some(serial) = first_ready_serial {
+        if snapshot_mgr.get_cached(&serial).await.is_none() {
+            let snapshot_mgr = snapshot_mgr.clone();
+            let ui_weak = ui_weak.clone();
+            tokio::spawn(async move {
+                snapshot_mgr.capture_and_apply(serial, ui_weak).await;
+            });
+        }
+    }
 }
 
 #[tokio::main]
@@ -68,6 +94,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let ui = AppWindow::new()?;
     let mirror_manager = MirrorManager::new();
+    let snapshot_manager = SnapshotManager::new();
 
     // Inicializa preferências salvas no arquivo de configuração
     let initial_turn_off = ConfigManager::get_turn_screen_off();
@@ -75,6 +102,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let initial_always_on_top = ConfigManager::get_always_on_top();
     ui.set_mirror_always_on_top(initial_always_on_top);
+
+    // Inicializa preferências de atalhos rápidos do widget flutuante
+    let initial_sc = ConfigManager::get_quick_shortcuts();
+    ui.set_quick_back(initial_sc.back);
+    ui.set_quick_recents(initial_sc.recents);
+    ui.set_quick_home(initial_sc.home);
+    ui.set_quick_power(initial_sc.power);
+    ui.set_quick_volup(initial_sc.volup);
+    ui.set_quick_voldown(initial_sc.voldown);
+    ui.set_quick_screenshot(initial_sc.screenshot);
+    ui.set_quick_menu(initial_sc.menu);
 
     // Callback de alteração da preferência de apagar tela ao espelhar
     ui.on_toggle_turn_screen_off(move |val| {
@@ -86,23 +124,59 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ConfigManager::set_always_on_top(val);
     });
 
+    // Callback de alternância de atalho rápido no painel
+    {
+        let mirror_mgr = mirror_manager.clone();
+        ui.on_toggle_quick_shortcut(move |action, enabled| {
+            let act = action.to_string();
+            ConfigManager::set_quick_shortcut(&act, enabled);
+            mirror_mgr.companion().update_shortcuts(ConfigManager::get_quick_shortcuts());
+        });
+    }
+
+    // Callback de seleção de dispositivo na barra lateral
+    {
+        let snapshot_mgr = snapshot_manager.clone();
+        let ui_weak = ui.as_weak();
+        ui.on_device_selected(move |serial| {
+            let serial_str = serial.to_string();
+            let snapshot_mgr = snapshot_mgr.clone();
+            let ui_weak = ui_weak.clone();
+            tokio::spawn(async move {
+                if let Some(buf) = snapshot_mgr.get_cached(&serial_str).await {
+                    let _ = slint::invoke_from_event_loop(move || {
+                        if let Some(ui) = ui_weak.upgrade() {
+                            let img = slint::Image::from_rgba8(buf);
+                            ui.set_screen_image(img);
+                            ui.set_has_screen_image(true);
+                        }
+                    });
+                } else {
+                    snapshot_mgr.capture_and_apply(serial_str, ui_weak).await;
+                }
+            });
+        });
+    }
+
     // Atualização inicial de dispositivos
     {
         let mirror_mgr = mirror_manager.clone();
+        let snapshot_mgr = snapshot_manager.clone();
         let ui_weak = ui.as_weak();
         tokio::spawn(async move {
-            update_devices(&mirror_mgr, ui_weak).await;
+            update_devices(&mirror_mgr, &snapshot_mgr, ui_weak).await;
         });
     }
 
     // Polling contínuo em segundo plano para detectar conexões/desconexões USB (a cada 2s)
     {
         let mirror_mgr = mirror_manager.clone();
+        let snapshot_mgr = snapshot_manager.clone();
         let ui_weak = ui.as_weak();
         tokio::spawn(async move {
             loop {
                 tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-                update_devices(&mirror_mgr, ui_weak.clone()).await;
+                update_devices(&mirror_mgr, &snapshot_mgr, ui_weak.clone()).await;
             }
         });
     }
@@ -110,12 +184,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Callback de fim de sessão do scrcpy (janela flutuante fechada)
     {
         let mirror_mgr = mirror_manager.clone();
+        let snapshot_mgr = snapshot_manager.clone();
         let ui_weak = ui.as_weak();
         mirror_manager.set_on_ended(move || {
             let mirror_mgr = mirror_mgr.clone();
+            let snapshot_mgr = snapshot_mgr.clone();
             let ui_weak = ui_weak.clone();
             tokio::spawn(async move {
-                update_devices(&mirror_mgr, ui_weak).await;
+                update_devices(&mirror_mgr, &snapshot_mgr, ui_weak).await;
             });
         });
     }
@@ -123,12 +199,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Callback de atualização manual
     {
         let mirror_mgr = mirror_manager.clone();
+        let snapshot_mgr = snapshot_manager.clone();
         let ui_weak = ui.as_weak();
         ui.on_refresh_requested(move || {
             let mirror_mgr = mirror_mgr.clone();
+            let snapshot_mgr = snapshot_mgr.clone();
             let ui_weak = ui_weak.clone();
             tokio::spawn(async move {
-                update_devices(&mirror_mgr, ui_weak).await;
+                update_devices(&mirror_mgr, &snapshot_mgr, ui_weak).await;
             });
         });
     }
@@ -136,9 +214,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Callback de alternância de espelhamento (Fast Switching)
     {
         let mirror_mgr = mirror_manager.clone();
+        let snapshot_mgr = snapshot_manager.clone();
         let ui_weak = ui.as_weak();
         ui.on_mirror_toggled(move |serial, turn_off, always_on_top| {
             let mirror_mgr = mirror_mgr.clone();
+            let snapshot_mgr = snapshot_mgr.clone();
             let ui_weak = ui_weak.clone();
             let serial_str = serial.to_string();
             tokio::spawn(async move {
@@ -159,9 +239,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .await
                     {
                         error!("Falha ao iniciar espelhamento: {}", e);
+                    } else {
+                        // "assim que ele foi espelhado, faz um print da tela do celular conectado e joga um blur por cima"
+                        let snapshot_mgr = snapshot_mgr.clone();
+                        let serial_cap = serial_str.clone();
+                        let ui_weak_cap = ui_weak.clone();
+                        tokio::spawn(async move {
+                            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                            snapshot_mgr.capture_and_apply(serial_cap, ui_weak_cap).await;
+                        });
                     }
                 }
-                update_devices(&mirror_mgr, ui_weak).await;
+                update_devices(&mirror_mgr, &snapshot_mgr, ui_weak).await;
             });
         });
     }
@@ -211,6 +300,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     {
         let mirror_mgr = mirror_manager.clone();
+        let snapshot_mgr = snapshot_manager.clone();
         let ui_weak = ui.as_weak();
         ui.on_confirm_rename(move |serial, new_name| {
             let serial_str = serial.to_string();
@@ -220,9 +310,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ui.set_show_rename_dialog(false);
             }
             let mirror_mgr = mirror_mgr.clone();
+            let snapshot_mgr = snapshot_mgr.clone();
             let ui_weak = ui_weak.clone();
             tokio::spawn(async move {
-                update_devices(&mirror_mgr, ui_weak).await;
+                update_devices(&mirror_mgr, &snapshot_mgr, ui_weak).await;
             });
         });
     }
@@ -230,3 +321,4 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ui.run()?;
     Ok(())
 }
+

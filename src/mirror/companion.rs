@@ -5,6 +5,7 @@ use tracing::{info, warn};
 use slint::ComponentHandle;
 
 use crate::adb::AdbClient;
+use crate::config::{ConfigManager, QuickShortcutsConfig};
 use crate::mirror::manager::MirrorManager;
 use crate::CompanionWindow;
 
@@ -51,17 +52,22 @@ fn get_dpi_scale(hwnd: HWND) -> f32 {
 
 const LOGICAL_WIDTH: f32 = 52.0;
 const LOGICAL_COLLAPSED_HEIGHT: f32 = 52.0;
-const LOGICAL_EXPANDED_HEIGHT: f32 = 270.0;
+const BASE_EXPANDED_HEIGHT: f32 = 56.0;
+const BUTTON_STEP_HEIGHT: f32 = 39.0;
 
 #[derive(Clone)]
 pub struct CompanionManager {
     stop_signal: Arc<std::sync::Mutex<Option<Arc<AtomicBool>>>>,
+    active_window: Arc<std::sync::Mutex<Option<slint::Weak<CompanionWindow>>>>,
+    active_count: Arc<AtomicIsize>,
 }
 
 impl CompanionManager {
     pub fn new() -> Self {
         Self {
             stop_signal: Arc::new(std::sync::Mutex::new(None)),
+            active_window: Arc::new(std::sync::Mutex::new(None)),
+            active_count: Arc::new(AtomicIsize::new(5)),
         }
     }
 
@@ -69,6 +75,33 @@ impl CompanionManager {
         if let Ok(mut lock) = self.stop_signal.lock() {
             if let Some(sig) = lock.take() {
                 sig.store(true, Ordering::SeqCst);
+            }
+        }
+        if let Ok(mut lock) = self.active_window.lock() {
+            *lock = None;
+        }
+    }
+
+    pub fn update_shortcuts(&self, shortcuts: QuickShortcutsConfig) {
+        let count = (shortcuts.active_count() + 1) as isize;
+        self.active_count.store(count, Ordering::SeqCst);
+
+        if let Ok(lock) = self.active_window.lock() {
+            if let Some(weak) = lock.as_ref() {
+                let weak_clone = weak.clone();
+                let sc = shortcuts;
+                let _ = slint::invoke_from_event_loop(move || {
+                    if let Some(w) = weak_clone.upgrade() {
+                        w.set_show_back(sc.back);
+                        w.set_show_home(sc.home);
+                        w.set_show_recents(sc.recents);
+                        w.set_show_power(sc.power);
+                        w.set_show_volup(sc.volup);
+                        w.set_show_voldown(sc.voldown);
+                        w.set_show_screenshot(sc.screenshot);
+                        w.set_show_menu(sc.menu);
+                    }
+                });
             }
         }
     }
@@ -87,7 +120,13 @@ impl CompanionManager {
             *lock = Some(stop_signal.clone());
         }
 
+        let initial_sc = ConfigManager::get_quick_shortcuts();
+        self.active_count.store((initial_sc.active_count() + 1) as isize, Ordering::SeqCst);
+
         let stop_signal_clone = stop_signal.clone();
+        let active_win_holder = self.active_window.clone();
+        let active_count_holder = self.active_count.clone();
+
         std::thread::spawn(move || {
             let scrcpy_title = format!("Mirro - {}", display_name);
             let scrcpy_title_w = to_wide(&scrcpy_title);
@@ -123,17 +162,30 @@ impl CompanionManager {
             let weak_holder = comp_window_weak.clone();
             let serial_clone = serial.clone();
             let mm_clone = mirror_mgr.clone();
+            let count_atomic = active_count_holder.clone();
 
             let (tx_ready, rx_ready) = std::sync::mpsc::channel();
 
+            let sc_init = initial_sc.clone();
             let _ = slint::invoke_from_event_loop(move || {
                 if let Ok(comp_win) = CompanionWindow::new() {
                     comp_win.set_device_serial(slint::SharedString::from(serial_clone.clone()));
                     comp_win.set_is_expanded(false);
 
+                    // Inicializa opções de atalhos rápidos
+                    comp_win.set_show_back(sc_init.back);
+                    comp_win.set_show_home(sc_init.home);
+                    comp_win.set_show_recents(sc_init.recents);
+                    comp_win.set_show_power(sc_init.power);
+                    comp_win.set_show_volup(sc_init.volup);
+                    comp_win.set_show_voldown(sc_init.voldown);
+                    comp_win.set_show_screenshot(sc_init.screenshot);
+                    comp_win.set_show_menu(sc_init.menu);
+
                     let win_weak = comp_win.as_weak();
                     let is_exp = is_exp_slint.clone();
                     let hwnd_atom = comp_hwnd_slint.clone();
+                    let count_for_toggle = count_atomic.clone();
 
                     comp_win.on_toggle_expanded(move || {
                         if let Some(w) = win_weak.upgrade() {
@@ -146,7 +198,10 @@ impl CompanionManager {
                                 let hwnd = hwnd_val as HWND;
                                 let scale = get_dpi_scale(hwnd);
                                 let w_phys = (LOGICAL_WIDTH * scale).round() as i32;
-                                let h_phys = ((if next { LOGICAL_EXPANDED_HEIGHT } else { LOGICAL_COLLAPSED_HEIGHT }) * scale).round() as i32;
+
+                                let cnt = count_for_toggle.load(Ordering::SeqCst) as f32;
+                                let exp_h = BASE_EXPANDED_HEIGHT + (cnt * BUTTON_STEP_HEIGHT);
+                                let h_phys = ((if next { exp_h } else { LOGICAL_COLLAPSED_HEIGHT }) * scale).round() as i32;
 
                                 unsafe {
                                     let mut current_rect: RECT = std::mem::zeroed();
@@ -185,6 +240,18 @@ impl CompanionManager {
                                 "power" => {
                                     let _ = AdbClient::send_keyevent(&s_dev, 26).await;
                                 }
+                                "volup" => {
+                                    let _ = AdbClient::send_keyevent(&s_dev, 24).await;
+                                }
+                                "voldown" => {
+                                    let _ = AdbClient::send_keyevent(&s_dev, 25).await;
+                                }
+                                "screenshot" => {
+                                    let _ = AdbClient::send_keyevent(&s_dev, 120).await;
+                                }
+                                "menu" => {
+                                    let _ = AdbClient::send_keyevent(&s_dev, 82).await;
+                                }
                                 "close" => {
                                     mm_inner.stop_mirroring().await;
                                 }
@@ -195,11 +262,15 @@ impl CompanionManager {
 
                     let _ = comp_win.show();
                     *weak_holder.lock().unwrap() = Some(comp_win.as_weak());
-                    let _ = tx_ready.send(());
+                    let _ = tx_ready.send(comp_win.as_weak());
                 }
             });
 
-            let _ = rx_ready.recv_timeout(Duration::from_secs(2));
+            if let Ok(comp_weak) = rx_ready.recv_timeout(Duration::from_secs(2)) {
+                if let Ok(mut lock) = active_win_holder.lock() {
+                    *lock = Some(comp_weak);
+                }
+            }
 
             let comp_title_w = to_wide("Mirro Companion");
             let mut comp_hwnd: HWND = std::ptr::null_mut();
@@ -279,8 +350,11 @@ impl CompanionManager {
                     let is_exp = is_expanded_atomic.load(Ordering::SeqCst);
                     let scale = get_dpi_scale(comp_hwnd);
 
+                    let cnt = active_count_holder.load(Ordering::SeqCst) as f32;
+                    let exp_h = BASE_EXPANDED_HEIGHT + (cnt * BUTTON_STEP_HEIGHT);
+
                     let target_w = (LOGICAL_WIDTH * scale).round() as i32;
-                    let target_h = ((if is_exp { LOGICAL_EXPANDED_HEIGHT } else { LOGICAL_COLLAPSED_HEIGHT }) * scale).round() as i32;
+                    let target_h = ((if is_exp { exp_h } else { LOGICAL_COLLAPSED_HEIGHT }) * scale).round() as i32;
                     let gap = (10.0 * scale).round() as i32;
 
                     let screen_w = GetSystemMetrics(SM_CXSCREEN);

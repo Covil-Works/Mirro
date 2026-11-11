@@ -5,6 +5,60 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct QuickShortcutsConfig {
+    #[serde(default = "default_true")]
+    pub back: bool,
+    #[serde(default = "default_true")]
+    pub home: bool,
+    #[serde(default = "default_true")]
+    pub recents: bool,
+    #[serde(default = "default_true")]
+    pub power: bool,
+    #[serde(default)]
+    pub volup: bool,
+    #[serde(default)]
+    pub voldown: bool,
+    #[serde(default)]
+    pub screenshot: bool,
+    #[serde(default)]
+    pub menu: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl Default for QuickShortcutsConfig {
+    fn default() -> Self {
+        Self {
+            back: true,
+            home: true,
+            recents: true,
+            power: true,
+            volup: false,
+            voldown: false,
+            screenshot: false,
+            menu: false,
+        }
+    }
+}
+
+impl QuickShortcutsConfig {
+    pub fn active_count(&self) -> usize {
+        let mut count = 0;
+        if self.back { count += 1; }
+        if self.home { count += 1; }
+        if self.recents { count += 1; }
+        if self.power { count += 1; }
+        if self.volup { count += 1; }
+        if self.voldown { count += 1; }
+        if self.screenshot { count += 1; }
+        if self.menu { count += 1; }
+        count
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AppConfig {
     #[serde(default)]
     pub aliases: HashMap<String, String>,
@@ -12,6 +66,8 @@ pub struct AppConfig {
     pub turn_screen_off: bool,
     #[serde(default = "default_always_on_top")]
     pub always_on_top: bool,
+    #[serde(default)]
+    pub quick_shortcuts: QuickShortcutsConfig,
 }
 
 fn default_turn_screen_off() -> bool {
@@ -28,6 +84,7 @@ impl Default for AppConfig {
             aliases: HashMap::new(),
             turn_screen_off: true,
             always_on_top: true,
+            quick_shortcuts: QuickShortcutsConfig::default(),
         }
     }
 }
@@ -98,6 +155,26 @@ impl ConfigManager {
         cfg.always_on_top = val;
         Self::save(&cfg);
     }
+
+    pub fn get_quick_shortcuts() -> QuickShortcutsConfig {
+        Self::load().quick_shortcuts
+    }
+
+    pub fn set_quick_shortcut(action: &str, enabled: bool) {
+        let mut cfg = Self::load();
+        match action {
+            "back" => cfg.quick_shortcuts.back = enabled,
+            "home" => cfg.quick_shortcuts.home = enabled,
+            "recents" => cfg.quick_shortcuts.recents = enabled,
+            "power" => cfg.quick_shortcuts.power = enabled,
+            "volup" => cfg.quick_shortcuts.volup = enabled,
+            "voldown" => cfg.quick_shortcuts.voldown = enabled,
+            "screenshot" => cfg.quick_shortcuts.screenshot = enabled,
+            "menu" => cfg.quick_shortcuts.menu = enabled,
+            _ => return,
+        }
+        Self::save(&cfg);
+    }
 }
 
 #[cfg(test)]
@@ -108,10 +185,14 @@ mod tests {
     fn test_config_serialization() {
         let mut cfg = AppConfig::default();
         cfg.aliases.insert("SERIAL123".to_string(), "Meu Galaxy".to_string());
+        cfg.quick_shortcuts.screenshot = true;
         let json = serde_json::to_string(&cfg).unwrap();
         let decoded: AppConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(decoded.aliases.get("SERIAL123").unwrap(), "Meu Galaxy");
         assert!(decoded.turn_screen_off);
         assert!(decoded.always_on_top);
+        assert!(decoded.quick_shortcuts.screenshot);
+        assert!(decoded.quick_shortcuts.back);
     }
 }
+

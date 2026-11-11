@@ -29,6 +29,10 @@ impl MirrorManager {
         }
     }
 
+    pub fn companion(&self) -> &CompanionManager {
+        &self.companion
+    }
+
     pub fn set_on_ended<F>(&self, callback: F)
     where
         F: Fn() + Send + Sync + 'static,

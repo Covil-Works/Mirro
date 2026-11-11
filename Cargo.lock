@@ -2694,6 +2694,7 @@ name = "mirro"
 version = "0.1.0"
 dependencies = [
  "directories",
+ "image",
  "serde",
  "serde_json",
  "slint",
