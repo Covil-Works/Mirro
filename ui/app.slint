@@ -105,13 +105,13 @@ component IconButton inherits Rectangle {
     in property <image> icon;
     in property <string> tooltip: "";
     in property <bool> enabled: true;
-    in property <length> custom_height: 36px;
+    in property <length> custom_height: 38px;
     out property <bool> has_hover: ta.has-hover;
     callback clicked();
 
     height: root.custom_height;
     horizontal-stretch: 1;
-    border-radius: 4px;
+    border-radius: 6px;
     border-width: 1px;
     border-color: !root.enabled ? #222222 : #ffffff;
     background: !root.enabled ? #111111 : (ta.has-hover ? #000000 : #ffffff);
@@ -132,34 +132,6 @@ component IconButton inherits Rectangle {
             width: 18px;
             height: 18px;
             colorize: !root.enabled ? #444444 : (ta.has-hover ? #ffffff : #000000);
-        }
-    }
-
-    if ta.has-hover && root.enabled && root.tooltip != "": Rectangle {
-        y: -30px;
-        x: (parent.width - self.width) / 2;
-        height: 22px;
-        border-radius: 4px;
-        border-width: 1px;
-        border-color: #ffffff;
-        background: #000000;
-        z: 200;
-
-        HorizontalLayout {
-            padding-left: 8px;
-            padding-right: 8px;
-            alignment: center;
-            cross-axis-alignment: center;
-
-            Text {
-                text: root.tooltip;
-                color: #ffffff;
-                font-size: 10px;
-                font-weight: 700;
-                letter-spacing: 0.5px;
-                vertical-alignment: center;
-                horizontal-alignment: center;
-            }
         }
     }
 }
@@ -1473,47 +1445,51 @@ export component AppWindow inherits Window {
 
                         VerticalLayout {
                             padding: 16px;
-                            spacing: 14px;
+                            spacing: 12px;
 
                             // ==========================================
-                            // SEÇÃO 1: NAVEGAÇÃO (3 botões em linha, só ícone + tooltip)
+                            // SEÇÃO 1: NAVEGAÇÃO
                             // ==========================================
                             VerticalLayout {
-                                spacing: 8px;
+                                spacing: 10px;
 
                                 HorizontalLayout {
+                                    height: 18px;
                                     alignment: space-between;
                                     cross-axis-alignment: center;
 
                                     Text {
                                         text: "NAVEGAÇÃO";
                                         color: #666666;
-                                        font-size: 10px;
+                                        font-size: 11px;
                                         font-weight: 700;
-                                        letter-spacing: 1px;
+                                        letter-spacing: 0.8px;
                                         vertical-alignment: center;
                                     }
 
                                     if btn_back.has_hover: Text {
                                         text: "VOLTAR";
                                         color: #ffffff;
-                                        font-size: 10px;
+                                        font-size: 11px;
                                         font-weight: 700;
                                         letter-spacing: 0.5px;
+                                        vertical-alignment: center;
                                     }
                                     if btn_recents.has_hover: Text {
                                         text: "RECENTES";
                                         color: #ffffff;
-                                        font-size: 10px;
+                                        font-size: 11px;
                                         font-weight: 700;
                                         letter-spacing: 0.5px;
+                                        vertical-alignment: center;
                                     }
                                     if btn_home.has_hover: Text {
                                         text: "INÍCIO";
                                         color: #ffffff;
-                                        font-size: 10px;
+                                        font-size: 11px;
                                         font-weight: 700;
                                         letter-spacing: 0.5px;
+                                        vertical-alignment: center;
                                     }
                                 }
 
@@ -1544,51 +1520,55 @@ export component AppWindow inherits Window {
                                 }
                             }
 
-                            // Divisor
+                            // Divisor fino
                             Rectangle {
                                 height: 1px;
-                                background: #161616;
+                                background: #1a1a1a;
                             }
 
                             // ==========================================
-                            // SEÇÃO 2: BOTÕES (Tela On/Off, Aumentar Volume, Diminuir Volume)
+                            // SEÇÃO 2: BOTÕES
                             // ==========================================
                             VerticalLayout {
-                                spacing: 8px;
+                                spacing: 10px;
 
                                 HorizontalLayout {
+                                    height: 18px;
                                     alignment: space-between;
                                     cross-axis-alignment: center;
 
                                     Text {
                                         text: "BOTÕES";
                                         color: #666666;
-                                        font-size: 10px;
+                                        font-size: 11px;
                                         font-weight: 700;
-                                        letter-spacing: 1px;
+                                        letter-spacing: 0.8px;
                                         vertical-alignment: center;
                                     }
 
                                     if btn_power.has_hover: Text {
                                         text: "TELA ON/OFF";
                                         color: #ffffff;
-                                        font-size: 10px;
+                                        font-size: 11px;
                                         font-weight: 700;
                                         letter-spacing: 0.5px;
+                                        vertical-alignment: center;
                                     }
                                     if btn_volup.has_hover: Text {
                                         text: "VOLUME +";
                                         color: #ffffff;
-                                        font-size: 10px;
+                                        font-size: 11px;
                                         font-weight: 700;
                                         letter-spacing: 0.5px;
+                                        vertical-alignment: center;
                                     }
                                     if btn_voldown.has_hover: Text {
                                         text: "VOLUME -";
                                         color: #ffffff;
-                                        font-size: 10px;
+                                        font-size: 11px;
                                         font-weight: 700;
                                         letter-spacing: 0.5px;
+                                        vertical-alignment: center;
                                     }
                                 }
 
@@ -1619,44 +1599,47 @@ export component AppWindow inherits Window {
                                 }
                             }
 
-                            // Divisor
+                            // Divisor fino
                             Rectangle {
                                 height: 1px;
-                                background: #161616;
+                                background: #1a1a1a;
                             }
 
                             // ==========================================
-                            // SEÇÃO 3: AÇÕES (Print e Menu lado a lado)
+                            // SEÇÃO 3: AÇÕES
                             // ==========================================
                             VerticalLayout {
-                                spacing: 8px;
+                                spacing: 10px;
 
                                 HorizontalLayout {
+                                    height: 18px;
                                     alignment: space-between;
                                     cross-axis-alignment: center;
 
                                     Text {
                                         text: "AÇÕES";
                                         color: #666666;
-                                        font-size: 10px;
+                                        font-size: 11px;
                                         font-weight: 700;
-                                        letter-spacing: 1px;
+                                        letter-spacing: 0.8px;
                                         vertical-alignment: center;
                                     }
 
                                     if btn_screenshot.has_hover: Text {
                                         text: "CAPTURA DE TELA";
                                         color: #ffffff;
-                                        font-size: 10px;
+                                        font-size: 11px;
                                         font-weight: 700;
                                         letter-spacing: 0.5px;
+                                        vertical-alignment: center;
                                     }
                                     if btn_menu.has_hover: Text {
                                         text: "MENU";
                                         color: #ffffff;
-                                        font-size: 10px;
+                                        font-size: 11px;
                                         font-weight: 700;
                                         letter-spacing: 0.5px;
+                                        vertical-alignment: center;
                                     }
                                 }
 
@@ -1680,32 +1663,32 @@ export component AppWindow inherits Window {
                                 }
                             }
 
-                            // Divisor
+                            // Divisor fino
                             Rectangle {
                                 height: 1px;
-                                background: #161616;
+                                background: #1a1a1a;
                             }
 
                             // ==========================================
-                            // SEÇÃO 4: ATALHOS RÁPIDOS (Configuração do Widget Flutuante)
+                            // SEÇÃO 4: ATALHOS RÁPIDOS
                             // ==========================================
                             VerticalLayout {
-                                spacing: 8px;
+                                spacing: 10px;
                                 vertical-stretch: 1;
 
                                 VerticalLayout {
-                                    spacing: 2px;
+                                    spacing: 3px;
                                     Text {
                                         text: "ATALHOS RÁPIDOS";
                                         color: #666666;
-                                        font-size: 10px;
+                                        font-size: 11px;
                                         font-weight: 700;
-                                        letter-spacing: 1px;
+                                        letter-spacing: 0.8px;
                                     }
                                     Text {
                                         text: "Escolha quais botões vão para o widget flutuante:";
                                         color: #444444;
-                                        font-size: 9px;
+                                        font-size: 9.5px;
                                         wrap: word-wrap;
                                     }
                                 }
