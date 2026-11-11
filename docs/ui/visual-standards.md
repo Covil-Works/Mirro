@@ -133,15 +133,15 @@ Este documento centraliza as regras e padrões visuais aplicáveis à interface 
 
 ---
 
-### [visual-standards-010] Botões de Ação por Ícones Vetoriais com Tooltips e Atalhos Rápidos Configuráveis
+### [visual-standards-010] Botões de Ação por Ícones Vetoriais com Rótulo no Cabeçalho e Atalhos Rápidos
 
 * **Severidade:** Obrigatório
-* **Descrição:** Os botões de hardware e controle no painel lateral de funções do dispositivo conectado devem utilizar exclusivamente ícones vetoriais monocromáticos (sem texto fixo interno no botão), dispostos em linhas horizontais simétricas com expansão flexível uniforme: seção "Navegação" (Voltar, Recentes e Início lado a lado), seção "Botões" (Tela On/Off, Aumentar Volume e Diminuir Volume lado a lado) e seção "Ações" (Captura de Tela e Menu lado a lado). Cada botão deve obrigatoriamente exibir um tooltip flutuante contextual e atualizar o cabeçalho da respectiva seção ao receber hover do mouse. A seção "Atalhos Rápidos" substitui áreas genéricas e deve disponibilizar seletores de ativação/desativação para cada controle fixado no widget flutuante complementar (Companion) da tela espelhada.
-* **Justificativa:** Otimiza o aproveitamento vertical da interface com alinhamento cirúrgico de grade, previne acionamentos acidentais por meio de confirmação em tooltip e permite ao usuário customizar a régua de comandos do widget flutuante conforme seu fluxo de trabalho.
+* **Descrição:** Os botões de hardware e controle no painel lateral de funções do dispositivo conectado devem utilizar exclusivamente ícones vetoriais monocromáticos (sem texto fixo interno no botão), dispostos em linhas horizontais simétricas com expansão flexível uniforme: seção "Navegação" (Voltar, Recentes e Início lado a lado), seção "Botões" (Tela On/Off, Aumentar Volume e Diminuir Volume lado a lado) e seção "Ações" (Captura de Tela e Menu lado a lado). Ao receber hover do mouse, o nome da ação deve ser exibido estritamente no cabeçalho da respectiva seção (à direita do título da seção), sendo proibido o uso de tooltips flutuantes em caixas sobrepostas. O espaçamento vertical entre seções deve manter proporção 2:1 em relação ao espaçamento entre o cabeçalho e a linha de botões. A seção "Atalhos Rápidos" disponibiliza seletores de ativação/desativação para cada controle fixado no widget flutuante complementar (Companion).
+* **Justificativa:** Elimina caixas de tooltip flutuantes que sobrepõem bordas e quebram a estética limpa do painel, fornecendo feedback de identificação imediato e estável no topo de cada seção com cadência e ritmo espacial impecáveis.
 * **Incorreto (Anti-padrão):**
+  - Utilizar caixas flutuantes de tooltip soltas acima dos botões com posições absolutas ou negativas.
   - Empilhar botões com textos extensos em coluna única ("VOLTAR", "INÍCIO", "RECENTES", "TELA ON/OFF") saturando o layout verticalmente.
-  - Deixar botões apenas com ícone sem fornecer tooltip ou indicação visual de hover ao passar o mouse.
-  - Deixar botões do widget flutuante com conjunto fixo sem persistência das preferências do usuário.
+  - Deixar botões apenas com ícone sem fornecer indicação textual no cabeçalho ao passar o mouse.
 * **Correto (Padrão Aprovado):**
-  - Componente `IconButton` com SVG vetorial, inversão monocromática de estado, proporção simétrica na linha e tooltip instantâneo ao passar o cursor.
-  - Seção "Atalhos Rápidos" com lista rolável contendo ícone, rótulo e checkbox, salvando as escolhas no arquivo de configuração e atualizando o CompanionWindow em tempo real.
+  - Linha de cabeçalho da seção com altura fixa exibindo o título da seção à esquerda e o nome do botão em foco à direita em tipografia monocromática branca.
+  - Componente `IconButton` com SVG vetorial, inversão monocromática de foco (fundo preto/branco), cantos arredondados de 6px e espaçamento vertical proporcional de 10px em relação ao cabeçalho.

@@ -7,6 +7,7 @@ use tokio::sync::{Mutex, RwLock};
 use tracing::{error, info, warn};
 
 use crate::mirror::companion::CompanionManager;
+use crate::snapshot::SnapshotManager;
 use crate::tools::locator::Locator;
 
 pub type OnSessionEnded = Box<dyn Fn() + Send + Sync + 'static>;
@@ -17,6 +18,7 @@ pub struct MirrorManager {
     active_serial: Arc<RwLock<Option<String>>>,
     on_ended: Arc<Mutex<Option<OnSessionEnded>>>,
     companion: CompanionManager,
+    snapshot_mgr: Arc<RwLock<Option<SnapshotManager>>>,
 }
 
 impl MirrorManager {
@@ -26,7 +28,16 @@ impl MirrorManager {
             active_serial: Arc::new(RwLock::new(None)),
             on_ended: Arc::new(Mutex::new(None)),
             companion: CompanionManager::new(),
+            snapshot_mgr: Arc::new(RwLock::new(None)),
         }
+    }
+
+    pub fn set_snapshot_manager(&self, snap: SnapshotManager) {
+        let holder = self.snapshot_mgr.clone();
+        tokio::spawn(async move {
+            let mut write = holder.write().await;
+            *write = Some(snap);
+        });
     }
 
     pub fn companion(&self) -> &CompanionManager {
@@ -145,7 +156,8 @@ impl MirrorManager {
         }
 
         // Inicia o companion widget flutuante anexado ao scrcpy
-        self.companion.start(serial.clone(), display_name.clone(), self.clone());
+        let snap = self.snapshot_mgr.read().await.clone().unwrap_or_default();
+        self.companion.start(serial.clone(), display_name.clone(), self.clone(), snap);
 
         // Tarefa em segundo plano para monitorar o encerramento do processo
         let active_serial_clone = self.active_serial.clone();

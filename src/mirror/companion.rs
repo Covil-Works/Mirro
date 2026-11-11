@@ -112,6 +112,7 @@ impl CompanionManager {
         serial: String,
         display_name: String,
         mirror_mgr: MirrorManager,
+        snapshot_mgr: crate::snapshot::SnapshotManager,
     ) {
         self.stop();
 
@@ -126,6 +127,7 @@ impl CompanionManager {
         let stop_signal_clone = stop_signal.clone();
         let active_win_holder = self.active_window.clone();
         let active_count_holder = self.active_count.clone();
+        let snap_mgr_thread = snapshot_mgr.clone();
 
         std::thread::spawn(move || {
             let scrcpy_title = format!("Mirro - {}", display_name);
@@ -222,10 +224,12 @@ impl CompanionManager {
 
                     let s = serial_clone.clone();
                     let mm = mm_clone.clone();
+                    let snap_for_comp = snap_mgr_thread.clone();
                     comp_win.on_action_triggered(move |action| {
                         let act = action.to_string();
                         let s_dev = s.clone();
                         let mm_inner = mm.clone();
+                        let snap_inner = snap_for_comp.clone();
                         tokio::spawn(async move {
                             match act.as_str() {
                                 "back" => {
@@ -247,7 +251,7 @@ impl CompanionManager {
                                     let _ = AdbClient::send_keyevent(&s_dev, 25).await;
                                 }
                                 "screenshot" => {
-                                    let _ = AdbClient::send_keyevent(&s_dev, 120).await;
+                                    let _ = snap_inner.take_user_screenshot(&s_dev, None).await;
                                 }
                                 "menu" => {
                                     let _ = AdbClient::send_keyevent(&s_dev, 82).await;
@@ -404,5 +408,6 @@ impl CompanionManager {
         _serial: String,
         _display_name: String,
         _mirror_mgr: MirrorManager,
+        _snapshot_mgr: crate::snapshot::SnapshotManager,
     ) {}
 }

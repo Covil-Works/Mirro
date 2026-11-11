@@ -70,13 +70,13 @@ async fn update_devices(
         }
     });
 
-    // Se houver aparelho pronto e nenhum screenshot em cache para ele, dispara a captura inicial com desfoque
+    // Se houver aparelho pronto e nenhum screenshot em cache para ele, restaura do disco ou captura
     if let Some(serial) = first_ready_serial {
         if snapshot_mgr.get_cached(&serial).await.is_none() {
             let snapshot_mgr = snapshot_mgr.clone();
             let ui_weak = ui_weak.clone();
             tokio::spawn(async move {
-                snapshot_mgr.capture_and_apply(serial, ui_weak).await;
+                snapshot_mgr.load_or_capture(serial, ui_weak).await;
             });
         }
     }
@@ -95,6 +95,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ui = AppWindow::new()?;
     let mirror_manager = MirrorManager::new();
     let snapshot_manager = SnapshotManager::new();
+    snapshot_manager.set_ui_weak(ui.as_weak()).await;
+    mirror_manager.set_snapshot_manager(snapshot_manager.clone());
 
     // Inicializa preferências salvas no arquivo de configuração
     let initial_turn_off = ConfigManager::get_turn_screen_off();
@@ -143,17 +145,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let snapshot_mgr = snapshot_mgr.clone();
             let ui_weak = ui_weak.clone();
             tokio::spawn(async move {
-                if let Some(buf) = snapshot_mgr.get_cached(&serial_str).await {
-                    let _ = slint::invoke_from_event_loop(move || {
-                        if let Some(ui) = ui_weak.upgrade() {
-                            let img = slint::Image::from_rgba8(buf);
-                            ui.set_screen_image(img);
-                            ui.set_has_screen_image(true);
-                        }
-                    });
-                } else {
-                    snapshot_mgr.capture_and_apply(serial_str, ui_weak).await;
-                }
+                snapshot_mgr.load_or_capture(serial_str, ui_weak).await;
             });
         });
     }
@@ -240,13 +232,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     {
                         error!("Falha ao iniciar espelhamento: {}", e);
                     } else {
-                        // "assim que ele foi espelhado, faz um print da tela do celular conectado e joga um blur por cima"
+                        // Ao iniciar espelhamento, assegura que a tela do mockup esteja carregada
                         let snapshot_mgr = snapshot_mgr.clone();
                         let serial_cap = serial_str.clone();
                         let ui_weak_cap = ui_weak.clone();
                         tokio::spawn(async move {
                             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-                            snapshot_mgr.capture_and_apply(serial_cap, ui_weak_cap).await;
+                            snapshot_mgr.load_or_capture(serial_cap, ui_weak_cap).await;
                         });
                     }
                 }
@@ -255,12 +247,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
-    // Callback de ações de navegação (Voltar, Home, Recentes, Ligar/Desligar Tela)
+    // Callback de ações de navegação (Voltar, Home, Recentes, Ligar/Desligar Tela, Captura de Tela)
     {
+        let snapshot_mgr = snapshot_manager.clone();
+        let ui_weak = ui.as_weak();
         ui.on_nav_action(move |serial, action| {
             let serial_str = serial.to_string();
             let action_str = action.to_string();
+            let snapshot_mgr = snapshot_mgr.clone();
+            let ui_weak = ui_weak.clone();
             tokio::spawn(async move {
+                if action_str == "screenshot" {
+                    let _ = snapshot_mgr.take_user_screenshot(&serial_str, Some(ui_weak)).await;
+                    return;
+                }
                 let keycode = match action_str.as_str() {
                     "back" => 4,
                     "home" => 3,
@@ -268,7 +268,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "power" => 26,
                     "volup" => 24,
                     "voldown" => 25,
-                    "screenshot" => 120,
                     "menu" => 82,
                     _ => return,
                 };
