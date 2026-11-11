@@ -94,6 +94,7 @@ impl MirrorManager {
         if server_path.exists() {
             cmd.env("SCRCPY_SERVER_PATH", &server_path);
         }
+        cmd.env("SCRCPY_ICON_DIR", &scrcpy_dir);
 
         // Argumentos de execução
         let mut args = vec![

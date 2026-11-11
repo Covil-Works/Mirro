@@ -162,3 +162,33 @@ Este documento centraliza as regras e padrões visuais aplicáveis à interface 
   - No reposicionamento contínuo, utilizar `SetWindowPos` com a flag `SWP_NOZORDER | SWP_NOACTIVATE`.
   - Aplicar `WS_EX_TOPMOST` e `HWND_TOPMOST` exclusivamente se a opção de espelhamento "Sempre no topo" estiver ativada pelo usuário.
   - Ocultar o widget via `ShowWindow(comp_hwnd, SW_HIDE)` ao detectar `IsIconic` ou `!IsWindowVisible` na janela principal de espelhamento.
+
+---
+
+### [visual-standards-012] Identidade Visual e Iconografia Unificada de Janelas
+
+* **Severidade:** Obrigatório
+* **Descrição:** Todas as janelas do ecossistema do aplicativo — a janela principal do Mirro (`AppWindow`), o widget flutuante de ações rápidas (`CompanionWindow`) e a janela nativa de espelhamento do scrcpy — devem utilizar o logotipo oficial unificado do aplicativo (`ui/icons/mirro-icon.svg` e seus equivalentes renderizados `.ico`/`.png`). A atribuição do ícone deve ocorrer no nível do framework Slint (`icon: @image-url("icons/mirro-icon.svg");`) e via Win32 API (`WM_SETICON` com `ICON_BIG` e `ICON_SMALL`) diretamente no handle de cada janela (`HWND`), inclusive configurando o diretório de ícone do scrcpy e aplicando o ícone diretamente ao seu handle.
+* **Justificativa:** Elimina ícones padrão genéricos do sistema operacional ou de bibliotecas externas (como o ícone de engrenagem do SDL ou a pena do scrcpy), garantindo coerência visual, reconhecimento de marca e acabamento profissional na barra de tarefas e na barra de títulos do Windows.
+* **Incorreto (Anti-padrão):**
+  - Manter o ícone nativo do SDL/scrcpy na janela de espelhamento.
+  - Deixar o widget flutuante companion ou a janela principal sem ícone definido na barra de tarefas.
+  - Utilizar ícones distintos ou formatos incompatíveis entre as janelas do sistema.
+* **Correto (Padrão Aprovado):**
+  - Gerar o vetor oficial SVG a partir da matriz de design com transparência externa e traçado nítido.
+  - Declarar `icon: @image-url("icons/mirro-icon.svg");` nas janelas Slint (`AppWindow` e `CompanionWindow`).
+  - Aplicar `set_window_icon(hwnd)` nas instâncias Win32 identificadas para `AppWindow`, `CompanionWindow` e na janela do processo scrcpy.
+
+---
+
+### [visual-standards-012] Notificação Toast e Configuração de Diretório de Capturas
+* **Severidade:** Obrigatório
+* **Descrição:** O aplicativo deve fornecer retorno visual explícito (toast monocromático temporizado) ao registrar uma captura de tela, informando que a imagem foi salva no celular e no computador com o caminho de destino. O painel de configurações deve disponibilizar campo de visualização com truncamento óptico (`overflow: elide`), botão para seleção de pasta nativa via diálogo de sistema, botão para abertura imediata no Windows Explorer e opção de restauração do caminho padrão (`Imagens/Mirro`). É estritamente proibido salvar capturas silenciosamente sem indicar a pasta ao usuário ou utilizar cores chamativas no toast.
+* **Justificativa:** Elimina a incerteza do usuário quanto ao sucesso do print no celular e à localização do arquivo no sistema de arquivos do computador, mantendo a consistência estética com o tema escuro minimalista.
+* **Incorreto (Anti-padrão):**
+  - Salvar capturas de forma oculta sem feedback visual de confirmação na janela.
+  - Exibir toasts com ícones coloridos ou emojis (exemplo: balões verdes ou amarelos).
+  - Deixar o caminho de salvamento fixo em código sem opção de escolha pelo usuário.
+* **Correto (Padrão Aprovado):**
+  - Toast flutuante com fundo escuro translúcido (`#050505fa`), borda branca fina de 1px, ícone monocromático vetorial e temporizador automático de 4 segundos.
+  - Seção dedicada nas Configurações com botões "ALTERAR PASTA", "ABRIR NO EXPLORER" e "RESTAURAR PADRÃO".

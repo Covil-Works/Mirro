@@ -142,6 +142,13 @@ impl AdbClient {
         Some(output.stdout)
     }
 
+    /// Dispara a captura de tela nativa no dispositivo Android via KEYCODE_SYSRQ (120).
+    /// Isso aciona o serviço nativo do sistema Android, salvando a captura na galeria do celular
+    /// (DCIM/Screenshots ou Pictures/Screenshots) com animação visual e som do obturador.
+    pub async fn trigger_device_screenshot(serial: &str) -> Result<(), String> {
+        Self::send_keyevent(serial, 120).await
+    }
+
     /// Envia um keyevent Android para o dispositivo (Voltar, Home, Recentes, Power).
     pub async fn send_keyevent(serial: &str, keycode: u32) -> Result<(), String> {
         let adb_path = Locator::get_adb_path();

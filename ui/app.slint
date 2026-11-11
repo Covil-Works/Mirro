@@ -733,7 +733,7 @@ component GenericPhoneFrame inherits Rectangle {
 
 export component AppWindow inherits Window {
     title: "Mirro";
-    icon: @image-url("../tools/scrcpy/scrcpy.png");
+    icon: @image-url("icons/mirro-icon.svg");
     min-width: 960px;
     min-height: 660px;
     preferred-width: 1080px;
@@ -760,6 +760,9 @@ export component AppWindow inherits Window {
     in-out property <bool> quick_voldown: false;
     in-out property <bool> quick_screenshot: false;
     in-out property <bool> quick_menu: false;
+    in-out property <string> screenshot_save_path: "";
+    in-out property <string> toast_message: "";
+    in-out property <bool> show_toast: false;
 
     callback refresh_requested();
     callback mirror_toggled(string, bool, bool);
@@ -771,6 +774,9 @@ export component AppWindow inherits Window {
     callback toggle_turn_screen_off(bool);
     callback toggle_always_on_top(bool);
     callback toggle_quick_shortcut(string, bool);
+    callback choose_screenshot_dir();
+    callback open_screenshot_dir();
+    callback reset_screenshot_dir();
 
     property <bool> has_devices: root.devices.length > 0;
     property <int> active_idx: (root.selected_device_index >= 0 && root.selected_device_index < root.devices.length) ? root.selected_device_index : 0;
@@ -1179,7 +1185,98 @@ export component AppWindow inherits Window {
                         }
                     }
 
-                    // Grupo 2: Sistema e Conexão
+                    // Grupo 2: Captura de Tela e Armazenamento
+                    VerticalLayout {
+                        spacing: 12px;
+
+                        Text {
+                            text: "CAPTURA DE TELA E ARMAZENAMENTO";
+                            color: #555555;
+                            font-size: 10px;
+                            font-weight: 700;
+                            letter-spacing: 1px;
+                        }
+
+                        Rectangle {
+                            border-radius: 6px;
+                            border-width: 1px;
+                            border-color: #1e1e1e;
+                            background: #090909;
+
+                            VerticalLayout {
+                                padding: 18px;
+                                spacing: 14px;
+
+                                VerticalLayout {
+                                    spacing: 4px;
+
+                                    Text {
+                                        text: "DIRETÓRIO DE CAPTURAS NO COMPUTADOR";
+                                        color: #ffffff;
+                                        font-size: 13px;
+                                        font-weight: 700;
+                                    }
+
+                                    Text {
+                                        text: "Ao realizar uma captura de tela, a imagem é salva automaticamente na galeria do celular e nesta pasta selecionada no computador.";
+                                        color: #888888;
+                                        font-size: 11px;
+                                        wrap: word-wrap;
+                                    }
+                                }
+
+                                Rectangle {
+                                    border-radius: 4px;
+                                    border-width: 1px;
+                                    border-color: #222222;
+                                    background: #000000;
+                                    height: 38px;
+
+                                    HorizontalLayout {
+                                        padding-left: 14px;
+                                        padding-right: 14px;
+                                        alignment: start;
+                                        cross-axis-alignment: center;
+
+                                        Text {
+                                            text: root.screenshot_save_path;
+                                            color: #cccccc;
+                                            font-size: 11px;
+                                            font-weight: 500;
+                                            overflow: elide;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 10px;
+                                    alignment: start;
+                                    cross-axis-alignment: center;
+
+                                    MonoButton {
+                                        text: "ALTERAR PASTA";
+                                        custom_height: 32px;
+                                        clicked => { root.choose_screenshot_dir(); }
+                                    }
+
+                                    MonoButton {
+                                        text: "ABRIR NO EXPLORER";
+                                        custom_height: 32px;
+                                        clicked => { root.open_screenshot_dir(); }
+                                    }
+
+                                    MonoButton {
+                                        text: "RESTAURAR PADRÃO";
+                                        custom_height: 32px;
+                                        clicked => { root.reset_screenshot_dir(); }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Grupo 3: Sistema e Conexão
                     VerticalLayout {
                         spacing: 12px;
 
@@ -1842,12 +1939,72 @@ export component AppWindow inherits Window {
             }
         }
     }
+
+    // Notificação Toast Informativa de Captura de Tela (Monocromático, sem emojis)
+    if root.show_toast: Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: parent.height - self.height - 24px;
+        width: 560px;
+        height: 60px;
+        border-radius: 6px;
+        background: #050505fa;
+        border-width: 1px;
+        border-color: #ffffff;
+
+        HorizontalLayout {
+            padding-left: 16px;
+            padding-right: 16px;
+            alignment: space-between;
+            cross-axis-alignment: center;
+            spacing: 14px;
+
+            Rectangle {
+                width: 20px;
+                height: 20px;
+                Image {
+                    source: @image-url("icons/screenshot.svg");
+                    width: 20px;
+                    height: 20px;
+                }
+            }
+
+            Text {
+                text: root.toast_message;
+                color: #ffffff;
+                font-size: 11px;
+                font-weight: 600;
+                wrap: word-wrap;
+                horizontal-stretch: 1;
+                vertical-alignment: center;
+            }
+
+            Rectangle {
+                width: 24px;
+                height: 24px;
+                border-radius: 4px;
+                background: ta_close.has-hover ? #222222 : transparent;
+
+                ta_close := TouchArea {
+                    clicked => { root.show_toast = false; }
+                }
+
+                Image {
+                    source: @image-url("icons/close.svg");
+                    width: 12px;
+                    height: 12px;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                }
+            }
+        }
+    }
 }
 
 export component CompanionWindow inherits Window {
     title: "Mirro Companion";
     no-frame: true;
     background: transparent;
+    icon: @image-url("icons/mirro-icon.svg");
 
     in-out property <bool> is_expanded: false;
     in property <string> device_serial: "";

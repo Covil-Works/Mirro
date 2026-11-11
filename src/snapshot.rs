@@ -67,18 +67,9 @@ impl SnapshotManager {
         }
     }
 
-    /// Diretório onde capturas manuais do usuário são salvas no computador (Imagens/Mirro)
+    /// Diretório onde capturas manuais do usuário são salvas no computador
     pub fn user_screenshots_dir() -> PathBuf {
-        let base_dir = directories::UserDirs::new()
-            .and_then(|u| u.picture_dir().map(|p| p.to_path_buf()))
-            .unwrap_or_else(|| {
-                directories::ProjectDirs::from("com", "Mirro", "Mirro")
-                    .map(|p| p.data_dir().to_path_buf())
-                    .unwrap_or_else(|| PathBuf::from("."))
-            });
-        let dir = base_dir.join("Mirro");
-        let _ = fs::create_dir_all(&dir);
-        dir
+        crate::config::ConfigManager::get_screenshot_dir()
     }
 
     /// Caminho do arquivo de cache persistente para um dispositivo específico
@@ -219,7 +210,8 @@ impl SnapshotManager {
     }
 
     /// Realiza a captura de tela solicitada pelo usuário (via botão do app ou companion),
-    /// salvando a imagem em alta resolução na pasta Imagens/Mirro do computador,
+    /// disparando o print nativo no celular (salvo na galeria do dispositivo),
+    /// salvando a imagem em alta resolução na pasta configurada no computador,
     /// atualizando o cache persistente do dispositivo e atualizando o mockup na UI.
     pub async fn take_user_screenshot(
         &self,
@@ -228,6 +220,8 @@ impl SnapshotManager {
     ) -> Option<PathBuf> {
         info!("Executando captura de tela sob demanda do usuário para o dispositivo {}", serial);
 
+        // 1. Obtém a captura de tela para salvar no PC e atualizar o mockup
+        // Realizado antes do evento nativo para que a imagem do PC seja limpa (sem animação de flash do celular)
         let png_bytes = match AdbClient::capture_screenshot(serial).await {
             Some(bytes) => bytes,
             None => {
@@ -236,7 +230,16 @@ impl SnapshotManager {
             }
         };
 
-        // 1. Salva na pasta de screenshots do usuário no PC
+        // 2. Dispara a captura de tela nativa no próprio celular (salva na galeria do celular)
+        // O keyevent 120 (KEYCODE_SYSRQ) aciona o serviço nativo de screenshot do Android,
+        // gerando animação visual, som de obturador e salvando em DCIM/Screenshots ou Pictures/Screenshots.
+        if let Err(e) = AdbClient::trigger_device_screenshot(serial).await {
+            warn!("Aviso ao disparar captura nativa no dispositivo {}: {}", serial, e);
+        } else {
+            info!("Captura nativa disparada com sucesso no dispositivo {}", serial);
+        }
+
+        // 3. Salva na pasta de screenshots do usuário no PC
         let user_dir = Self::user_screenshots_dir();
         let timestamp = get_timestamp_string();
         let safe_serial = sanitize_name(serial);
@@ -248,11 +251,16 @@ impl SnapshotManager {
             info!("Captura de tela salva com sucesso no computador: {:?}", user_file_path);
         }
 
-        // 2. Atualiza também o cache persistente do dispositivo para o mockup
+        // 4. Atualiza também o cache persistente do dispositivo para o mockup
         let cache_path = Self::device_cache_path(serial);
         let _ = fs::write(&cache_path, &png_bytes);
 
-        // 3. Atualiza o desfoque e a imagem no mockup da UI
+        // 5. Atualiza o desfoque e a imagem no mockup da UI e exibe notificação
+        let ui_weak = match specific_ui_weak {
+            Some(w) => Some(w),
+            None => self.ui_weak.read().await.clone(),
+        };
+
         if let Some((w, h, raw_bytes)) = Self::process_blur(&png_bytes).await {
             let mut pixel_buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(w, h);
             pixel_buffer.make_mut_bytes().copy_from_slice(&raw_bytes);
@@ -262,14 +270,31 @@ impl SnapshotManager {
                 write.insert(serial.to_string(), pixel_buffer.clone());
             }
 
-            let ui_weak = specific_ui_weak.or_else(|| self.ui_weak.blocking_read().clone());
-            if let Some(weak) = ui_weak {
+            if let Some(ref weak) = ui_weak {
                 let buf_to_send = pixel_buffer.clone();
+                let file_path_clone = user_file_path.clone();
+                let weak_clone = weak.clone();
                 let _ = slint::invoke_from_event_loop(move || {
-                    if let Some(ui) = weak.upgrade() {
+                    if let Some(ui) = weak_clone.upgrade() {
                         ui.set_screen_image(slint::Image::from_rgba8(buf_to_send));
                         ui.set_has_screen_image(true);
+                        ui.set_toast_message(slint::SharedString::from(format!(
+                            "Captura salva no celular e no PC:\n{}",
+                            file_path_clone.display()
+                        )));
+                        ui.set_show_toast(true);
                     }
+                });
+
+                // Oculta o toast informativo após 4 segundos
+                let weak_timer = weak.clone();
+                tokio::spawn(async move {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(4000)).await;
+                    let _ = slint::invoke_from_event_loop(move || {
+                        if let Some(ui) = weak_timer.upgrade() {
+                            ui.set_show_toast(false);
+                        }
+                    });
                 });
             }
         }

@@ -93,6 +93,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Iniciando o Mirro — Controle & Espelhamento Android...");
 
     let ui = AppWindow::new()?;
+
+    #[cfg(windows)]
+    {
+        tokio::spawn(async move {
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            let title_w: Vec<u16> = "Mirro — Controle & Espelhamento Android\0"
+                .encode_utf16()
+                .collect();
+            unsafe {
+                let hwnd = windows_sys::Win32::UI::WindowsAndMessaging::FindWindowW(
+                    std::ptr::null_mut(),
+                    title_w.as_ptr(),
+                );
+                if !hwnd.is_null() {
+                    crate::tools::icon::set_window_icon(hwnd);
+                }
+            }
+        });
+    }
+
     let mirror_manager = MirrorManager::new();
     let snapshot_manager = SnapshotManager::new();
     snapshot_manager.set_ui_weak(ui.as_weak()).await;
@@ -104,6 +124,53 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let initial_always_on_top = ConfigManager::get_always_on_top();
     ui.set_mirror_always_on_top(initial_always_on_top);
+
+    // Inicializa diretório de salvamento de capturas
+    let initial_screenshot_path = ConfigManager::get_screenshot_dir_string();
+    ui.set_screenshot_save_path(SharedString::from(initial_screenshot_path));
+
+    // Callback de seleção de pasta para capturas de tela (abre seletor nativo)
+    {
+        let ui_weak = ui.as_weak();
+        ui.on_choose_screenshot_dir(move || {
+            let ui_weak = ui_weak.clone();
+            std::thread::spawn(move || {
+                let current = ConfigManager::get_screenshot_dir();
+                let dialog = rfd::FileDialog::new()
+                    .set_title("Selecionar pasta para capturas de tela")
+                    .set_directory(&current);
+                if let Some(folder) = dialog.pick_folder() {
+                    let path_str = folder.to_string_lossy().to_string();
+                    ConfigManager::set_screenshot_dir(&path_str);
+                    let _ = slint::invoke_from_event_loop(move || {
+                        if let Some(ui) = ui_weak.upgrade() {
+                            ui.set_screenshot_save_path(SharedString::from(path_str));
+                        }
+                    });
+                }
+            });
+        });
+    }
+
+    // Callback para abrir pasta de capturas no Explorer
+    ui.on_open_screenshot_dir(move || {
+        let path = ConfigManager::get_screenshot_dir();
+        let _ = std::process::Command::new("explorer.exe")
+            .arg(&path)
+            .spawn();
+    });
+
+    // Callback para restaurar pasta padrão de capturas
+    {
+        let ui_weak = ui.as_weak();
+        ui.on_reset_screenshot_dir(move || {
+            ConfigManager::reset_screenshot_dir();
+            let def_str = ConfigManager::get_screenshot_dir_string();
+            if let Some(ui) = ui_weak.upgrade() {
+                ui.set_screenshot_save_path(SharedString::from(def_str));
+            }
+        });
+    }
 
     // Inicializa preferências de atalhos rápidos do widget flutuante
     let initial_sc = ConfigManager::get_quick_shortcuts();

@@ -68,6 +68,8 @@ pub struct AppConfig {
     pub always_on_top: bool,
     #[serde(default)]
     pub quick_shortcuts: QuickShortcutsConfig,
+    #[serde(default)]
+    pub screenshot_dir: Option<String>,
 }
 
 fn default_turn_screen_off() -> bool {
@@ -85,6 +87,7 @@ impl Default for AppConfig {
             turn_screen_off: true,
             always_on_top: false,
             quick_shortcuts: QuickShortcutsConfig::default(),
+            screenshot_dir: None,
         }
     }
 }
@@ -175,6 +178,53 @@ impl ConfigManager {
         }
         Self::save(&cfg);
     }
+
+    pub fn default_screenshot_dir() -> PathBuf {
+        let base_dir = directories::UserDirs::new()
+            .and_then(|u| u.picture_dir().map(|p| p.to_path_buf()))
+            .unwrap_or_else(|| {
+                directories::ProjectDirs::from("com", "Mirro", "Mirro")
+                    .map(|p| p.data_dir().to_path_buf())
+                    .unwrap_or_else(|| PathBuf::from("."))
+            });
+        base_dir.join("Mirro")
+    }
+
+    pub fn get_screenshot_dir() -> PathBuf {
+        let cfg = Self::load();
+        if let Some(ref custom) = cfg.screenshot_dir {
+            let trimmed = custom.trim();
+            if !trimmed.is_empty() {
+                let path = PathBuf::from(trimmed);
+                let _ = fs::create_dir_all(&path);
+                return path;
+            }
+        }
+        let default_path = Self::default_screenshot_dir();
+        let _ = fs::create_dir_all(&default_path);
+        default_path
+    }
+
+    pub fn get_screenshot_dir_string() -> String {
+        Self::get_screenshot_dir().to_string_lossy().to_string()
+    }
+
+    pub fn set_screenshot_dir(path: &str) {
+        let mut cfg = Self::load();
+        let trimmed = path.trim();
+        if trimmed.is_empty() {
+            cfg.screenshot_dir = None;
+        } else {
+            cfg.screenshot_dir = Some(trimmed.to_string());
+        }
+        Self::save(&cfg);
+    }
+
+    pub fn reset_screenshot_dir() {
+        let mut cfg = Self::load();
+        cfg.screenshot_dir = None;
+        Self::save(&cfg);
+    }
 }
 
 #[cfg(test)]
@@ -186,6 +236,7 @@ mod tests {
         let mut cfg = AppConfig::default();
         cfg.aliases.insert("SERIAL123".to_string(), "Meu Galaxy".to_string());
         cfg.quick_shortcuts.screenshot = true;
+        cfg.screenshot_dir = Some("C:\\MinhasCapturas".to_string());
         let json = serde_json::to_string(&cfg).unwrap();
         let decoded: AppConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(decoded.aliases.get("SERIAL123").unwrap(), "Meu Galaxy");
@@ -193,6 +244,13 @@ mod tests {
         assert!(!decoded.always_on_top);
         assert!(decoded.quick_shortcuts.screenshot);
         assert!(decoded.quick_shortcuts.back);
+        assert_eq!(decoded.screenshot_dir.as_deref(), Some("C:\\MinhasCapturas"));
+    }
+
+    #[test]
+    fn test_default_screenshot_dir() {
+        let def = ConfigManager::default_screenshot_dir();
+        assert!(def.ends_with("Mirro"));
     }
 }
 

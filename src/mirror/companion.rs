@@ -158,6 +158,9 @@ impl CompanionManager {
 
             info!("Janela do scrcpy detectada. Inicializando companion widget anti-aliased...");
 
+            #[cfg(windows)]
+            crate::tools::icon::set_window_icon(scrcpy_hwnd);
+
             let is_expanded_atomic = Arc::new(AtomicBool::new(false));
             let comp_hwnd_atomic = Arc::new(AtomicIsize::new(0));
             let comp_window_weak = Arc::new(std::sync::Mutex::new(None::<slint::Weak<CompanionWindow>>));
@@ -311,6 +314,9 @@ impl CompanionManager {
             }
 
             comp_hwnd_atomic.store(comp_hwnd as isize, Ordering::SeqCst);
+
+            #[cfg(windows)]
+            crate::tools::icon::set_window_icon(comp_hwnd);
 
             unsafe {
                 // 1. Configura estilos estendidos: WS_EX_TOOLWINDOW para não poluir a barra de tarefas
