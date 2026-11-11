@@ -157,7 +157,7 @@ impl MirrorManager {
 
         // Inicia o companion widget flutuante anexado ao scrcpy
         let snap = self.snapshot_mgr.read().await.clone().unwrap_or_default();
-        self.companion.start(serial.clone(), display_name.clone(), self.clone(), snap);
+        self.companion.start(serial.clone(), display_name.clone(), always_on_top, self.clone(), snap);
 
         // Tarefa em segundo plano para monitorar o encerramento do processo
         let active_serial_clone = self.active_serial.clone();

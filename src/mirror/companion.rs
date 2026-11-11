@@ -15,9 +15,11 @@ use windows_sys::Win32::Foundation::{HWND, RECT};
 use windows_sys::Win32::UI::HiDpi::GetDpiForWindow;
 #[cfg(windows)]
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    FindWindowW, GetSystemMetrics, GetWindowLongW, GetWindowRect, IsIconic, IsWindow,
-    SetWindowLongW, SetWindowPos, ShowWindow, GWL_EXSTYLE, HWND_TOPMOST, SM_CXSCREEN,
-    SWP_NOACTIVATE, SW_HIDE, SW_SHOWNOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+    BringWindowToTop, FindWindowW, GetSystemMetrics, GetWindowLongW, GetWindowRect,
+    IsIconic, IsWindow, IsWindowVisible, SetWindowLongPtrW, SetWindowLongW, SetWindowPos,
+    ShowWindow, GWLP_HWNDPARENT, GWL_EXSTYLE, HWND_NOTOPMOST, HWND_TOPMOST, SM_CXSCREEN,
+    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SW_HIDE, SW_SHOWNOACTIVATE,
+    WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
 };
 
 #[cfg(windows)]
@@ -111,6 +113,7 @@ impl CompanionManager {
         &self,
         serial: String,
         display_name: String,
+        always_on_top: bool,
         mirror_mgr: MirrorManager,
         snapshot_mgr: crate::snapshot::SnapshotManager,
     ) {
@@ -168,6 +171,7 @@ impl CompanionManager {
 
             let (tx_ready, rx_ready) = std::sync::mpsc::channel();
 
+            let scrcpy_hwnd_val = scrcpy_hwnd as isize;
             let sc_init = initial_sc.clone();
             let _ = slint::invoke_from_event_loop(move || {
                 if let Ok(comp_win) = CompanionWindow::new() {
@@ -210,12 +214,12 @@ impl CompanionManager {
                                     GetWindowRect(hwnd, &mut current_rect);
                                     SetWindowPos(
                                         hwnd,
-                                        HWND_TOPMOST,
+                                        std::ptr::null_mut(),
                                         current_rect.left,
                                         current_rect.top,
                                         w_phys,
                                         h_phys,
-                                        SWP_NOACTIVATE,
+                                        SWP_NOZORDER | SWP_NOACTIVATE,
                                     );
                                 }
                             }
@@ -230,6 +234,15 @@ impl CompanionManager {
                         let s_dev = s.clone();
                         let mm_inner = mm.clone();
                         let snap_inner = snap_for_comp.clone();
+
+                        // Garante que scrcpy acompanhe a interação do usuário
+                        unsafe {
+                            let sc_hwnd = scrcpy_hwnd_val as HWND;
+                            if !sc_hwnd.is_null() && IsWindow(sc_hwnd) != 0 {
+                                BringWindowToTop(sc_hwnd);
+                            }
+                        }
+
                         tokio::spawn(async move {
                             match act.as_str() {
                                 "back" => {
@@ -300,15 +313,48 @@ impl CompanionManager {
             comp_hwnd_atomic.store(comp_hwnd as isize, Ordering::SeqCst);
 
             unsafe {
-                // Remove do switcher de tarefas e mantém sempre no topo
-                let ex_style = GetWindowLongW(comp_hwnd, GWL_EXSTYLE);
-                SetWindowLongW(
-                    comp_hwnd,
-                    GWL_EXSTYLE,
-                    ex_style | (WS_EX_TOOLWINDOW as i32) | (WS_EX_TOPMOST as i32),
-                );
+                // 1. Configura estilos estendidos: WS_EX_TOOLWINDOW para não poluir a barra de tarefas
+                let mut ex_style = GetWindowLongW(comp_hwnd, GWL_EXSTYLE);
+                ex_style |= WS_EX_TOOLWINDOW as i32;
+                if always_on_top {
+                    ex_style |= WS_EX_TOPMOST as i32;
+                } else {
+                    ex_style &= !(WS_EX_TOPMOST as i32);
+                }
+                SetWindowLongW(comp_hwnd, GWL_EXSTYLE, ex_style);
 
-                // DWM Composition Transparency: permite anti-aliasing suave por GPU sem recorte 1-bit
+                // 2. Vincula a janela scrcpy como PROPRIETÁRIA (owner) do companion widget.
+                // Isso vincula nativamente o ciclo de vida e a ordem Z:
+                // - O companion widget segue estritamente a janela do scrcpy na ordem Z (se scrcpy for para trás, companion vai junto);
+                // - Se scrcpy for minimizado (Win+D, barra de tarefas, botão minimizar), o companion minimiza/oculta junto;
+                // - Se scrcpy for restaurado, o companion restaura junto;
+                // - Se qualquer uma for ativada, ambas sobem juntas.
+                SetWindowLongPtrW(comp_hwnd, GWLP_HWNDPARENT, scrcpy_hwnd as isize);
+
+                // 3. Define Z-order inicial correspondente
+                if always_on_top {
+                    SetWindowPos(
+                        comp_hwnd,
+                        HWND_TOPMOST,
+                        0,
+                        0,
+                        0,
+                        0,
+                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                    );
+                } else {
+                    SetWindowPos(
+                        comp_hwnd,
+                        HWND_NOTOPMOST,
+                        0,
+                        0,
+                        0,
+                        0,
+                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                    );
+                }
+
+                // 4. DWM Composition Transparency: permite anti-aliasing suave por GPU sem recorte 1-bit
                 let margins = MARGINS {
                     cx_left_width: -1,
                     cx_right_width: -1,
@@ -335,13 +381,16 @@ impl CompanionManager {
                         break;
                     }
 
+                    // Verifica se o scrcpy está minimizado ou não visível
                     let is_minimized = IsIconic(scrcpy_hwnd) != 0;
-                    if is_minimized {
+                    let is_scrcpy_visible = IsWindowVisible(scrcpy_hwnd) != 0 && !is_minimized;
+
+                    if !is_scrcpy_visible {
                         if was_visible {
                             ShowWindow(comp_hwnd, SW_HIDE);
                             was_visible = false;
                         }
-                        std::thread::sleep(Duration::from_millis(100));
+                        std::thread::sleep(Duration::from_millis(50));
                         continue;
                     } else if !was_visible {
                         ShowWindow(comp_hwnd, SW_SHOWNOACTIVATE);
@@ -350,6 +399,12 @@ impl CompanionManager {
 
                     let mut scrcpy_rect: RECT = std::mem::zeroed();
                     GetWindowRect(scrcpy_hwnd, &mut scrcpy_rect);
+
+                    // Se scrcpy_rect contiver coordenadas de janela minimizada (-32000), pula
+                    if scrcpy_rect.left <= -30000 || scrcpy_rect.top <= -30000 {
+                        std::thread::sleep(Duration::from_millis(50));
+                        continue;
+                    }
 
                     let is_exp = is_expanded_atomic.load(Ordering::SeqCst);
                     let scale = get_dpi_scale(comp_hwnd);
@@ -373,12 +428,12 @@ impl CompanionManager {
                     if target_x != last_x || target_y != last_y || target_w != last_w || target_h != last_h {
                         SetWindowPos(
                             comp_hwnd,
-                            HWND_TOPMOST,
+                            std::ptr::null_mut(),
                             target_x,
                             target_y,
                             target_w,
                             target_h,
-                            SWP_NOACTIVATE,
+                            SWP_NOZORDER | SWP_NOACTIVATE,
                         );
 
                         last_x = target_x;
@@ -407,6 +462,7 @@ impl CompanionManager {
         &self,
         _serial: String,
         _display_name: String,
+        _always_on_top: bool,
         _mirror_mgr: MirrorManager,
         _snapshot_mgr: crate::snapshot::SnapshotManager,
     ) {}

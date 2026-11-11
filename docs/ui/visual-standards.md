@@ -110,7 +110,7 @@ Este documento centraliza as regras e padrões visuais aplicáveis à interface 
   - Colar o widget diretamente sobre o vídeo do espelhamento, obstruindo a interface do smartphone.
   - Deixar o widget flutuante órfão na tela após o encerramento do processo scrcpy.
 * **Correto (Padrão Aprovado):**
-  - Janela sem moldura (`no-frame: true`), fundo transparente (`background: transparent`), sempre no topo (`always-on-top: true`) e composição DWM com margens negativas (`DwmExtendFrameIntoClientArea`).
+  - Janela sem moldura (`no-frame: true`), fundo transparente (`background: transparent`), composição DWM com margens negativas (`DwmExtendFrameIntoClientArea`) e sincronização de Z-order com o espelhamento.
   - Conversão dinâmica de medidas lógicas para pixels físicos usando `GetDpiForWindow`.
   - Transição de estado acionada por clique entre círculo compacto e pílula vertical.
   - Sincronização automática de ciclo de vida com o processo e janela do scrcpy.
@@ -145,3 +145,20 @@ Este documento centraliza as regras e padrões visuais aplicáveis à interface 
 * **Correto (Padrão Aprovado):**
   - Linha de cabeçalho da seção com altura fixa exibindo o título da seção à esquerda e o nome do botão em foco à direita em tipografia monocromática branca.
   - Componente `IconButton` com SVG vetorial, inversão monocromática de foco (fundo preto/branco), cantos arredondados de 6px e espaçamento vertical proporcional de 10px em relação ao cabeçalho.
+
+---
+
+### [visual-standards-011] Sincronização de Z-Order e Minimização do Widget Companion
+
+* **Severidade:** Obrigatório
+* **Descrição:** O widget flutuante de ações rápidas (Companion) deve operar com vínculo direto de propriedade nativa (Owner Window via `GWLP_HWNDPARENT`) com a janela de espelhamento do scrcpy. A ordem no eixo Z (profundidade) e o estado de visibilidade devem permanecer estritamente unificados: se a janela de espelhamento for enviada para segundo plano (atrás de outro aplicativo), o companion deve ir para trás junto; se for minimizada (via barra de tarefas, atalho de sistema ou botão de minimizar), o companion deve ser ocultado imediatamente; ao ser restaurada ou trazida para frente, o companion deve ressurgir acoplado a ela. É estritamente proibido forçar `HWND_TOPMOST` ou `WS_EX_TOPMOST` incondicionalmente no loop de rastreamento.
+* **Justificativa:** Manter o widget flutuante permanentemente no topo sobrepondo outros programas de terceiros gera poluição visual, perturba o fluxo de trabalho do usuário e desassocia visualmente o controle da tela do smartphone à qual pertence.
+* **Incorreto (Anti-padrão):**
+  - Chamar `SetWindowPos` com `HWND_TOPMOST` em loops de polling contínuo sem `SWP_NOZORDER`.
+  - Fixar `always-on-top: true;` diretamente no componente Slint do companion.
+  - Deixar o botão de ações rápidas flutuando na frente de outros navegadores ou programas quando a janela do espelhamento estiver em segundo plano ou minimizada.
+* **Correto (Padrão Aprovado):**
+  - Configurar `SetWindowLongPtrW(comp_hwnd, GWLP_HWNDPARENT, scrcpy_hwnd)` para estabelecer relação formal de propriedade pelo Windows.
+  - No reposicionamento contínuo, utilizar `SetWindowPos` com a flag `SWP_NOZORDER | SWP_NOACTIVATE`.
+  - Aplicar `WS_EX_TOPMOST` e `HWND_TOPMOST` exclusivamente se a opção de espelhamento "Sempre no topo" estiver ativada pelo usuário.
+  - Ocultar o widget via `ShowWindow(comp_hwnd, SW_HIDE)` ao detectar `IsIconic` ou `!IsWindowVisible` na janela principal de espelhamento.

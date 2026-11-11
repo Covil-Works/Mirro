@@ -75,7 +75,7 @@ fn default_turn_screen_off() -> bool {
 }
 
 fn default_always_on_top() -> bool {
-    true
+    false
 }
 
 impl Default for AppConfig {
@@ -83,7 +83,7 @@ impl Default for AppConfig {
         Self {
             aliases: HashMap::new(),
             turn_screen_off: true,
-            always_on_top: true,
+            always_on_top: false,
             quick_shortcuts: QuickShortcutsConfig::default(),
         }
     }
@@ -190,7 +190,7 @@ mod tests {
         let decoded: AppConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(decoded.aliases.get("SERIAL123").unwrap(), "Meu Galaxy");
         assert!(decoded.turn_screen_off);
-        assert!(decoded.always_on_top);
+        assert!(!decoded.always_on_top);
         assert!(decoded.quick_shortcuts.screenshot);
         assert!(decoded.quick_shortcuts.back);
     }

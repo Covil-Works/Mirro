@@ -747,7 +747,7 @@ export component AppWindow inherits Window {
     in-out property <string> rename_serial: "";
     in-out property <string> rename_text: "";
     in-out property <bool> turn_screen_off: true;
-    in-out property <bool> mirror_always_on_top: true;
+    in-out property <bool> mirror_always_on_top: false;
     in-out property <int> selected_device_index: 0;
     in-out property <string> active_nav: "devices";
     in-out property <image> screen_image;
@@ -1848,7 +1848,6 @@ export component CompanionWindow inherits Window {
     title: "Mirro Companion";
     no-frame: true;
     background: transparent;
-    always-on-top: true;
 
     in-out property <bool> is_expanded: false;
     in property <string> device_serial: "";
