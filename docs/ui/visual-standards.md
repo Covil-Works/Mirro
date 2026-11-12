@@ -199,13 +199,14 @@ Este documento centraliza as regras e padrões visuais aplicáveis à interface 
 ### [visual-standards-014] Painel Lateral de Arquivos em /mirro e Transferência por Arraste (Drag and Drop)
 
 * **Severidade:** Obrigatório
-* **Descrição:** O gerenciamento de arquivos do diretório `/mirro` no smartphone deve ser posicionado à direita do painel de botões de ações na janela principal do aplicativo, mantendo altura unificada (580px) com a moldura do celular e com o painel de navegação. A lista de arquivos e pastas deve ser estritamente monocromática e simplificada, apresentando emblemas técnicos com o formato do item (PASTA, PNG, PDF, APK, etc.) e o nome do arquivo com tratamento de truncamento óptico. A transferência de arquivos deve ser suportada de forma transparente por arrastar e soltar (Drag and Drop) tanto na janela de espelhamento do scrcpy (via `--push-target=/sdcard/mirro/`) quanto na janela do aplicativo (via `WM_DROPFILES` e `DragAcceptFiles`), enviando diretamente para `/sdcard/mirro/` após assegurar a existência da pasta no sistema de arquivos do Android.
-* **Justificativa:** Proporciona transferência de arquivos simplificada e rápida sem a necessidade de comandos manuais no terminal ou janelas modais complexas de gerenciamento, mantendo equilíbrio e harmonia geométrica na composição de 3 colunas monocromáticas da área de trabalho.
+* **Descrição:** O gerenciamento de arquivos do diretório `/mirro` no smartphone deve ser posicionado à direita do painel de botões de ações na janela principal do aplicativo, mantendo altura unificada (580px) com a moldura do celular e com o painel de navegação. A lista de arquivos e pastas deve ser minimalista e de alta densidade óptica: linhas compactas (26px de altura) com ícones vetoriais monocromáticos (ícone SVG minimalista para pastas e identificação direta pelo nome e extensão para arquivos, ex.: `screenshot.jpg`), sem cards volumosos ou emblemas pesados. A transferência de arquivos deve ser suportada de forma transparente por arrastar e soltar (Drag and Drop) tanto na janela de espelhamento do scrcpy (via `--push-target=/sdcard/mirro/`) quanto na janela do aplicativo (via `WM_DROPFILES` e `DragAcceptFiles` processados na thread de UI e propagados para janelas filhas), enviando diretamente para `/sdcard/mirro/` após assegurar a existência da pasta no sistema de arquivos do Android.
+* **Justificativa:** Proporciona transferência de arquivos simplificada e rápida sem a necessidade de comandos manuais no terminal ou janelas modais complexas de gerenciamento, mantendo uma visualização limpa, padrão e minimalista de arquivos alinhada à estética técnica do Mirro.
 * **Incorreto (Anti-padrão):**
+  - Renderizar cards pesados, badges multicoloridos ou caixas volumosas para cada arquivo individual.
   - Salvar arquivos arrastados em pastas genéricas como `/sdcard/Download/` sem centralizar em `/mirro`.
-  - Exibir ícones de pastas ou arquivos coloridos ou emojis na lista de itens.
+  - Exibir ícones coloridos ou emojis na lista de itens.
   - Falhar silenciosamente se o diretório `/sdcard/mirro` ainda não tiver sido criado no dispositivo.
 * **Correto (Padrão Aprovado):**
   - Assegurar a criação automática de `/sdcard/mirro` antes do espelhamento ou da transferência de arquivos.
-  - Renderizar painel lateral dedicado com 250px de largura e 580px de altura, exibindo emblemas técnicos monocromáticos de formato (`file_type`) e nome do arquivo.
+  - Renderizar painel lateral dedicado com 250px de largura e 580px de altura, exibindo itens em linhas compactas e elegantes com ícone SVG de pasta e nome do arquivo com hover sutil.
   - Disponibilizar botões de ação rápida ("ATUALIZAR" e "ENVIAR") e suporte a Drag and Drop nativo em ambas as janelas.
