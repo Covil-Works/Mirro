@@ -1,4 +1,4 @@
-import { LineEdit, ScrollView } from "std-widgets.slint";
+import { LineEdit, ScrollView, TextEdit } from "std-widgets.slint";
 import "./fonts/Poppins-Regular.ttf";
 import "./fonts/Poppins-Medium.ttf";
 import "./fonts/Poppins-SemiBold.ttf";
@@ -138,6 +138,99 @@ component IconButton inherits Rectangle {
             width: 18px;
             height: 18px;
             colorize: !root.enabled ? #444444 : (ta.has-hover ? #ffffff : #000000);
+        }
+    }
+}
+
+component ContextMenuItem inherits Rectangle {
+    in property <string> text;
+    callback clicked();
+
+    height: 25px;
+    border-radius: 3px;
+    background: ta.has-hover ? #222222 : transparent;
+
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        alignment: start;
+        cross-axis-alignment: center;
+
+        Text {
+            text: root.text;
+            color: ta.has-hover ? #ffffff : #bbbbbb;
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            vertical-alignment: center;
+        }
+    }
+}
+
+component FileContextMenu inherits Rectangle {
+    in property <bool> is_dir: false;
+    in property <bool> can_paste: false;
+    callback open_clicked();
+    callback copy_clicked();
+    callback cut_clicked();
+    callback paste_clicked();
+    callback select_clicked();
+    callback delete_clicked();
+    callback download_clicked();
+
+    width: 155px;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: #333333;
+    background: #0d0d0d;
+    clip: true;
+
+    VerticalLayout {
+        padding: 5px;
+        spacing: 2px;
+
+        ContextMenuItem {
+            text: root.is_dir ? "ABRIR PASTA" : "ABRIR / EDITAR";
+            clicked => { root.open_clicked(); }
+        }
+
+        Rectangle { height: 1px; background: #1c1c1c; }
+
+        ContextMenuItem {
+            text: "COPIAR";
+            clicked => { root.copy_clicked(); }
+        }
+
+        ContextMenuItem {
+            text: "RECORTAR";
+            clicked => { root.cut_clicked(); }
+        }
+
+        if root.can_paste: ContextMenuItem {
+            text: "COLAR";
+            clicked => { root.paste_clicked(); }
+        }
+
+        ContextMenuItem {
+            text: "SELECIONAR";
+            clicked => { root.select_clicked(); }
+        }
+
+        Rectangle { height: 1px; background: #1c1c1c; }
+
+        ContextMenuItem {
+            text: "BAIXAR NO PC";
+            clicked => { root.download_clicked(); }
+        }
+
+        ContextMenuItem {
+            text: "APAGAR";
+            clicked => { root.delete_clicked(); }
         }
     }
 }
@@ -772,6 +865,32 @@ export component AppWindow inherits Window {
     in-out property <string> toast_message: "";
     in-out property <bool> show_toast: false;
 
+    // Propriedades e estados da área de arquivos /mirro
+    in-out property <string> current_mirro_dir: "/sdcard/mirro";
+    in-out property <bool> is_in_subfolder: false;
+    in-out property <int> selected_file_idx: -1;
+    in-out property <string> selected_file_name: "";
+    in-out property <string> clipboard_file_name: "";
+    in-out property <string> clipboard_source_dir: "";
+    in-out property <bool> has_clipboard_file: false;
+    in-out property <bool> is_cut_mode: false;
+
+    // Menu suspenso (Context Menu) de arquivos
+    in-out property <bool> show_file_context_menu: false;
+    in-out property <length> context_menu_y: 110px;
+    in-out property <int> context_menu_file_idx: -1;
+    in-out property <string> context_menu_file_name: "";
+    in-out property <bool> context_menu_is_dir: false;
+
+    // Visualizador e Editor de Arquivo Modal
+    in-out property <bool> show_file_viewer: false;
+    in-out property <string> viewer_file_name: "";
+    in-out property <string> viewer_file_path: "";
+    in-out property <string> viewer_file_content: "";
+    in-out property <string> viewer_status_badge: "PRONTO";
+    in-out property <bool> viewer_is_image: false;
+    in-out property <image> viewer_image_data;
+
     callback refresh_requested();
     callback refresh_mirro_files();
     callback pick_and_send_file();
@@ -787,6 +906,20 @@ export component AppWindow inherits Window {
     callback choose_screenshot_dir();
     callback open_screenshot_dir();
     callback reset_screenshot_dir();
+
+    // Callbacks da área de arquivos
+    callback open_file(string, bool);
+    callback file_single_clicked(int, string, bool);
+    callback file_right_clicked(int, string, bool, length);
+    callback copy_file_action(string);
+    callback cut_file_action(string);
+    callback paste_file_action();
+    callback delete_file_action(string);
+    callback download_file_action(string);
+    callback navigate_parent_dir();
+    callback save_viewer_file(string);
+    callback open_viewer_file_in_pc();
+    callback close_file_viewer();
 
     property <bool> has_devices: root.devices.length > 0;
     property <int> active_idx: (root.selected_device_index >= 0 && root.selected_device_index < root.devices.length) ? root.selected_device_index : 0;
@@ -1057,6 +1190,7 @@ export component AppWindow inherits Window {
                 }
             }
         }
+    }
 
         // ==========================================
         // ÁREA DIREITA: Muda conforme a navegação ativa
@@ -1475,6 +1609,7 @@ export component AppWindow inherits Window {
 
                 // Barra Superior do Espaço de Trabalho
                 HorizontalLayout {
+                    vertical-stretch: 0;
                     alignment: space-between;
                     cross-axis-alignment: center;
 
@@ -1518,14 +1653,20 @@ export component AppWindow inherits Window {
 
                 // Divisor
                 Rectangle {
+                    vertical-stretch: 0;
                     height: 1px;
                     background: #1a1a1a;
                 }
 
-                // Palco Central: Moldura do Telefone + Painel de Funções ao lado
-                HorizontalLayout {
+                // Palco Central: Moldura do Telefone + Painel de Funções + Seção de Arquivos (Centralizado Vertical e Horizontalmente)
+                VerticalLayout {
+                    vertical-stretch: 1;
                     alignment: center;
-                    spacing: 24px;
+
+                    HorizontalLayout {
+                        alignment: center;
+                        cross-axis-alignment: center;
+                        spacing: 24px;
 
                     // Moldura Estilo iPhone
                     GenericPhoneFrame {
@@ -1905,7 +2046,7 @@ export component AppWindow inherits Window {
 
                         VerticalLayout {
                             padding: 16px;
-                            spacing: 12px;
+                            spacing: 10px;
 
                             // Cabeçalho da Seção de Arquivos
                             VerticalLayout {
@@ -1917,7 +2058,7 @@ export component AppWindow inherits Window {
                                     cross-axis-alignment: center;
 
                                     Text {
-                                        text: "ARQUIVOS /MIRRO";
+                                        text: root.is_in_subfolder ? "SUBPASTA" : "ARQUIVOS /MIRRO";
                                         color: #ffffff;
                                         font-size: 11px;
                                         font-weight: 700;
@@ -1948,32 +2089,100 @@ export component AppWindow inherits Window {
                                 }
 
                                 Text {
-                                    text: "Pasta raiz no smartphone (/sdcard/mirro)";
+                                    text: root.current_mirro_dir;
                                     color: #555555;
                                     font-size: 9.5px;
-                                    wrap: word-wrap;
+                                    overflow: elide;
                                 }
                             }
 
-                            // Ações Rápidas de Arquivos
+                            // Ações Rápidas de Arquivos (com ícones padrão de Refresh e Upload)
                             HorizontalLayout {
                                 spacing: 8px;
                                 cross-axis-alignment: center;
 
-                                MonoButton {
-                                    text: "ATUALIZAR";
-                                    custom_height: 30px;
-                                    padding_horizontal: 10px;
+                                IconButton {
+                                    icon: @image-url("icons/refresh.svg");
+                                    custom_height: 32px;
                                     enabled: root.has_selected && root.sel_ready;
                                     clicked => { root.refresh_mirro_files(); }
                                 }
 
-                                MonoButton {
-                                    text: "ENVIAR";
-                                    custom_height: 30px;
-                                    padding_horizontal: 10px;
+                                IconButton {
+                                    icon: @image-url("icons/upload.svg");
+                                    custom_height: 32px;
                                     enabled: root.has_selected && root.sel_ready;
                                     clicked => { root.pick_and_send_file(); }
+                                }
+
+                                if root.has_clipboard_file: Rectangle {
+                                    height: 32px;
+                                    horizontal-stretch: 1;
+                                    border-radius: 6px;
+                                    border-width: 1px;
+                                    border-color: #ffffff;
+                                    background: paste_btn_ta.has-hover ? #000000 : #ffffff;
+
+                                    paste_btn_ta := TouchArea {
+                                        mouse-cursor: pointer;
+                                        clicked => { root.paste_file_action(); }
+                                    }
+
+                                    HorizontalLayout {
+                                        padding-left: 8px;
+                                        padding-right: 8px;
+                                        alignment: center;
+                                        cross-axis-alignment: center;
+
+                                        Text {
+                                            text: "COLAR";
+                                            color: paste_btn_ta.has-hover ? #ffffff : #000000;
+                                            font-size: 10px;
+                                            font-weight: 700;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Navegação para voltar à pasta pai se estiver em subpasta
+                            if root.is_in_subfolder: Rectangle {
+                                height: 26px;
+                                border-radius: 4px;
+                                border-width: 1px;
+                                border-color: #222222;
+                                background: back_dir_ta.has-hover ? #1c1c1c : #101010;
+
+                                back_dir_ta := TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { root.navigate_parent_dir(); }
+                                }
+
+                                HorizontalLayout {
+                                    padding-left: 8px;
+                                    padding-right: 8px;
+                                    spacing: 6px;
+                                    alignment: start;
+                                    cross-axis-alignment: center;
+
+                                    Rectangle {
+                                        width: 12px;
+                                        height: 12px;
+                                        Image {
+                                            source: @image-url("icons/back.svg");
+                                            width: 12px;
+                                            height: 12px;
+                                            colorize: #888888;
+                                        }
+                                    }
+
+                                    Text {
+                                        text: ".. (Voltar para pasta anterior)";
+                                        color: back_dir_ta.has-hover ? #ffffff : #888888;
+                                        font-size: 10px;
+                                        font-weight: 600;
+                                        vertical-alignment: center;
+                                    }
                                 }
                             }
 
@@ -2032,13 +2241,26 @@ export component AppWindow inherits Window {
                                     spacing: 2px;
                                     alignment: start;
 
-                                    for file in root.mirro_files: Rectangle {
+                                    for file[idx] in root.mirro_files: Rectangle {
                                         height: 26px;
                                         border-radius: 3px;
-                                        background: f_ta.has-hover ? #141414 : transparent;
+                                        background: (root.selected_file_idx == idx)
+                                            ? #202020
+                                            : (f_ta.has-hover ? #141414 : transparent);
+                                        border-width: (root.selected_file_idx == idx) ? 1px : 0px;
+                                        border-color: #383838;
+                                        opacity: (root.is_cut_mode && root.clipboard_file_name == file.name && root.clipboard_source_dir == root.current_mirro_dir) ? 0.45 : 1.0;
 
                                         f_ta := TouchArea {
                                             mouse-cursor: pointer;
+                                            clicked => {
+                                                root.file_single_clicked(idx, file.name, file.is_dir);
+                                            }
+                                            pointer-event(ev) => {
+                                                if ev.button == PointerEventButton.right && ev.kind == PointerEventKind.up {
+                                                    root.file_right_clicked(idx, file.name, file.is_dir, 110px + (idx * 28px));
+                                                }
+                                            }
                                         }
 
                                         HorizontalLayout {
@@ -2048,24 +2270,35 @@ export component AppWindow inherits Window {
                                             alignment: start;
                                             cross-axis-alignment: center;
 
-                                            if file.is_dir: Rectangle {
+                                            // Miniatura do ícone (pasta ou arquivo)
+                                            Rectangle {
                                                 width: 14px;
                                                 height: 14px;
                                                 clip: false;
+
                                                 Image {
-                                                    source: @image-url("icons/folder.svg");
+                                                    source: file.is_dir ? @image-url("icons/folder.svg") : @image-url("icons/file.svg");
                                                     width: 14px;
                                                     height: 14px;
-                                                    colorize: f_ta.has-hover ? #ffffff : #888888;
+                                                    colorize: (root.selected_file_idx == idx || f_ta.has-hover) ? #ffffff : #777777;
                                                 }
                                             }
 
                                             Text {
                                                 text: file.name;
-                                                color: f_ta.has-hover ? #ffffff : (file.is_dir ? #ffffff : #cccccc);
+                                                color: (root.selected_file_idx == idx || f_ta.has-hover) ? #ffffff : (file.is_dir ? #ffffff : #cccccc);
                                                 font-size: 11px;
                                                 font-weight: file.is_dir ? 700 : 500;
                                                 overflow: elide;
+                                                vertical-alignment: center;
+                                                horizontal-stretch: 1;
+                                            }
+
+                                            if file.is_dir: Text {
+                                                text: ">";
+                                                color: #444444;
+                                                font-size: 10px;
+                                                font-weight: 700;
                                                 vertical-alignment: center;
                                             }
                                         }
@@ -2103,6 +2336,50 @@ export component AppWindow inherits Window {
                                         vertical-alignment: center;
                                     }
                                 }
+                            }
+                        }
+
+                        // Overlay transparente para fechar o menu de contexto ao clicar fora
+                        if root.show_file_context_menu: TouchArea {
+                            width: parent.width;
+                            height: parent.height;
+                            clicked => { root.show_file_context_menu = false; }
+                        }
+
+                        // Menu suspenso (Context Menu igualzinho explorador de arquivos)
+                        if root.show_file_context_menu: FileContextMenu {
+                            x: 45px;
+                            y: root.context_menu_y;
+                            is_dir: root.context_menu_is_dir;
+                            can_paste: root.has_clipboard_file;
+                            open_clicked => {
+                                root.show_file_context_menu = false;
+                                root.open_file(root.context_menu_file_name, root.context_menu_is_dir);
+                            }
+                            copy_clicked => {
+                                root.show_file_context_menu = false;
+                                root.copy_file_action(root.context_menu_file_name);
+                            }
+                            cut_clicked => {
+                                root.show_file_context_menu = false;
+                                root.cut_file_action(root.context_menu_file_name);
+                            }
+                            paste_clicked => {
+                                root.show_file_context_menu = false;
+                                root.paste_file_action();
+                            }
+                            select_clicked => {
+                                root.show_file_context_menu = false;
+                                root.selected_file_idx = root.context_menu_file_idx;
+                                root.selected_file_name = root.context_menu_file_name;
+                            }
+                            delete_clicked => {
+                                root.show_file_context_menu = false;
+                                root.delete_file_action(root.context_menu_file_name);
+                            }
+                            download_clicked => {
+                                root.show_file_context_menu = false;
+                                root.download_file_action(root.context_menu_file_name);
                             }
                         }
                     }
@@ -2159,6 +2436,194 @@ export component AppWindow inherits Window {
                         text: "SALVAR";
                         custom_height: 32px;
                         clicked => { root.confirm_rename(root.rename_serial, input.text); }
+                    }
+                }
+            }
+        }
+    }
+
+    // Modal de Visualização e Edição Completa de Arquivos (Monocromático, sem emojis)
+    if root.show_file_viewer: Rectangle {
+        background: #000000dd;
+
+        TouchArea {
+            // Previne cliques atrás do modal
+        }
+
+        Rectangle {
+            width: 760px;
+            height: 540px;
+            border-radius: 8px;
+            background: #080808;
+            border-width: 1px;
+            border-color: #ffffff;
+
+            VerticalLayout {
+                padding: 20px;
+                spacing: 12px;
+
+                // Header do Visualizador / Editor
+                HorizontalLayout {
+                    alignment: space-between;
+                    cross-axis-alignment: center;
+
+                    HorizontalLayout {
+                        spacing: 10px;
+                        cross-axis-alignment: center;
+
+                        Rectangle {
+                            width: 22px;
+                            height: 22px;
+                            Image {
+                                source: root.viewer_is_image ? @image-url("icons/file.svg") : @image-url("icons/edit.svg");
+                                width: 18px;
+                                height: 18px;
+                                colorize: #ffffff;
+                            }
+                        }
+
+                        VerticalLayout {
+                            spacing: 2px;
+
+                            Text {
+                                text: root.viewer_file_name;
+                                color: #ffffff;
+                                font-size: 13px;
+                                font-weight: 800;
+                                letter-spacing: 0.5px;
+                            }
+
+                            Text {
+                                text: root.viewer_file_path;
+                                color: #666666;
+                                font-size: 9.5px;
+                            }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 10px;
+                        cross-axis-alignment: center;
+
+                        Rectangle {
+                            height: 20px;
+                            border-radius: 2px;
+                            border-width: 1px;
+                            border-color: #333333;
+                            background: #111111;
+                            HorizontalLayout {
+                                padding-left: 8px;
+                                padding-right: 8px;
+                                alignment: center;
+                                cross-axis-alignment: center;
+                                Text {
+                                    text: root.viewer_status_badge;
+                                    color: #888888;
+                                    font-size: 9px;
+                                    font-weight: 700;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            width: 26px;
+                            height: 26px;
+                            border-radius: 3px;
+                            background: close_viewer_ta.has-hover ? #222222 : transparent;
+
+                            close_viewer_ta := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => { root.close_file_viewer(); }
+                            }
+
+                            Image {
+                                source: @image-url("icons/close.svg");
+                                width: 14px;
+                                height: 14px;
+                                colorize: close_viewer_ta.has-hover ? #ffffff : #888888;
+                                x: (parent.width - self.width) / 2;
+                                y: (parent.height - self.height) / 2;
+                            }
+                        }
+                    }
+                }
+
+                // Divisor fino
+                Rectangle { height: 1px; background: #1c1c1c; }
+
+                // Área de visualização/edição
+                if !root.viewer_is_image: Rectangle {
+                    vertical-stretch: 1;
+                    border-radius: 4px;
+                    border-width: 1px;
+                    border-color: #222222;
+                    background: #030303;
+                    clip: true;
+
+                    viewer_text_edit := TextEdit {
+                        text: root.viewer_file_content;
+                        font-size: 12px;
+                        edited => {
+                            root.viewer_file_content = self.text;
+                            root.viewer_status_badge = "MODIFICADO";
+                        }
+                    }
+                }
+
+                if root.viewer_is_image: Rectangle {
+                    vertical-stretch: 1;
+                    border-radius: 4px;
+                    border-width: 1px;
+                    border-color: #222222;
+                    background: #030303;
+                    clip: true;
+
+                    Image {
+                        source: root.viewer_image_data;
+                        width: parent.width - 20px;
+                        height: parent.height - 20px;
+                        x: 10px;
+                        y: 10px;
+                    }
+                }
+
+                // Rodapé com Ações
+                HorizontalLayout {
+                    alignment: space-between;
+                    cross-axis-alignment: center;
+
+                    Text {
+                        text: root.viewer_is_image ? "Visualização de imagem do smartphone (/mirro)." : "Edite o texto e salve diretamente no celular ou abra no Windows.";
+                        color: #555555;
+                        font-size: 10px;
+                        wrap: word-wrap;
+                    }
+
+                    HorizontalLayout {
+                        spacing: 10px;
+                        cross-axis-alignment: center;
+
+                        MonoButton {
+                            text: "ABRIR NO PC";
+                            custom_height: 32px;
+                            padding_horizontal: 14px;
+                            clicked => { root.open_viewer_file_in_pc(); }
+                        }
+
+                        if !root.viewer_is_image: MonoButton {
+                            text: "SALVAR NO CELULAR";
+                            custom_height: 32px;
+                            padding_horizontal: 14px;
+                            clicked => { root.save_viewer_file(root.viewer_file_content); }
+                        }
+
+                        MonoButton {
+                            text: "FECHAR";
+                            custom_height: 32px;
+                            padding_horizontal: 14px;
+                            clicked => { root.close_file_viewer(); }
+                        }
                     }
                 }
             }

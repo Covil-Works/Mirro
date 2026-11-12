@@ -210,3 +210,36 @@ Este documento centraliza as regras e padrões visuais aplicáveis à interface 
   - Assegurar a criação automática de `/sdcard/mirro` antes do espelhamento ou da transferência de arquivos.
   - Renderizar painel lateral dedicado com 250px de largura e 580px de altura, exibindo itens em linhas compactas e elegantes com ícone SVG de pasta e nome do arquivo com hover sutil.
   - Disponibilizar botões de ação rápida ("ATUALIZAR" e "ENVIAR") e suporte a Drag and Drop nativo em ambas as janelas.
+
+---
+
+### [visual-standards-015] Iconografia de Arquivos, Menu Suspenso de Contexto e Visualizador/Editor Modal
+
+* **Severidade:** Obrigatório
+* **Descrição:** A área de arquivos da janela principal deve adotar iconografia vetorial em miniatura de 14px posicionada estritamente à esquerda de cada nome de item (`folder.svg` para pastas e `file.svg` para arquivos). O cabeçalho de ações da área de arquivos deve utilizar botões por ícone vetorial monocromático compacto (ícone padrão de atualização `refresh.svg` com setas circulares e ícone de upload `upload.svg` com seta para cima), reservando botão textual adicional exclusivamente para a ação contextual "COLAR" quando houver item na área de transferência. O clique com o botão direito sobre qualquer item deve abrir um menu suspenso de contexto nativo com opções funcionais ("ABRIR / EDITAR" ou "ABRIR PASTA", "COPIAR", "RECORTAR", "COLAR", "SELECIONAR", "BAIXAR NO PC" e "APAGAR"), com fechamento automático ao clicar fora. A abertura de arquivos de texto, código e imagem deve exibir um modal centralizado de visualização e edição direta com suporte a salvar alterações de volta no smartphone via ADB e botão para abertura no computador com o aplicativo padrão do Windows.
+* **Justificativa:** Fornece paridade de recursos com gerenciadores de arquivos clássicos de desktop, eliminando a barreira de comandos de terminal para manipulação direta de arquivos do celular, garantindo leitura e edição imediatas com retorno visual confiável e consistência técnica monocromática.
+* **Incorreto (Anti-padrão):**
+  - Utilizar botões de texto extensos como "ATUALIZAR" e "ENVIAR" no cabeçalho quando ícones vetoriais universais economizam espaço e harmonizam o design.
+  - Exibir ícone apenas para diretórios, deixando arquivos sem miniatura identificadora à esquerda do nome.
+  - Abrir arquivos silenciosamente sem interface gráfica de visualização ou confirmação.
+  - Utilizar cores ou emojis no menu de contexto ou nas ações de exclusão.
+* **Correto (Padrão Aprovado):**
+  - Miniaturas padronizadas de 14px contidas em containers alinhados (`cross-axis-alignment: center`) para pastas e arquivos.
+  - Botões de cabeçalho por ícones monocromáticos `refresh.svg` e `upload.svg`.
+  - Menu suspenso flutuante com estados de hover monocromáticos e suporte a copiar, recortar (com opacidade visual reduzida no item), colar, selecionar e apagar.
+  - Modal integrado de visualização/edição (`TextEdit` para textos/códigos e `Image` para imagens) com botões "SALVAR NO CELULAR", "ABRIR NO PC" e "FECHAR".
+
+---
+
+### [visual-standards-016] Centralização Bidirecional do Palco Central de Dispositivos (Mockup, Funções e Arquivos)
+
+* **Severidade:** Obrigatório
+* **Descrição:** O conjunto central de elementos da área de trabalho do dispositivo (moldura mockada do smartphone, painel lateral de botões de hardware e painel lateral de arquivos em `/mirro`) deve permanecer rigorosamente centralizado no plano bidirecional (tanto horizontalmente quanto verticalmente) no espaço útil compreendido entre o divisor da barra superior e o rodapé da janela. O container intermediário deve receber expansão flexível vertical (`vertical-stretch: 1;`) com alinhamento centrado (`alignment: center;`), e o layout horizontal dos blocos deve implementar alinhamento transversal centrado (`cross-axis-alignment: center;`) e alinhamento principal centrado (`alignment: center;`). É expressamente proibido permitir que o palco central fique ancorado no topo com acúmulo assimétrico de espaço vazio na porção inferior ao redimensionar ou maximizar a janela.
+* **Justificativa:** Em resoluções elevadas (Full HD, 2K, 4K) ou janelas maximizadas, elementos fixados no topo criam desproporção óptica, cansaço visual e sensação de interface incompleta, enquanto a centralização bidirecional mantém simetria harmoniosa e foco operacional limpo no centro da visão do usuário.
+* **Incorreto (Anti-padrão):**
+  - Posicionar o palco de 580px imediatamente abaixo do cabeçalho sem container expansível centralizador, deixando grandes faixas vazias na base da tela.
+  - Alinhar apenas horizontalmente (`alignment: center`) enquanto a coordenada vertical permanece colada no topo (`y` inicial sem distribuição de margem inferior).
+* **Correto (Padrão Aprovado):**
+  - Barra superior e divisor com `vertical-stretch: 0;`.
+  - Container intermediário `VerticalLayout` com `vertical-stretch: 1;` e `alignment: center;`.
+  - Container interno `HorizontalLayout` com `alignment: center;`, `cross-axis-alignment: center;` e espaçamento padronizado de 24px entre o mockup, o painel de funções e o painel de arquivos.

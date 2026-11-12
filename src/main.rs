@@ -18,23 +18,65 @@ use config::ConfigManager;
 use mirror::MirrorManager;
 use snapshot::SnapshotManager;
 
-async fn update_mirro_files(serial: Option<String>, ui_weak: slint::Weak<AppWindow>) {
+fn show_temporary_toast(msg: String, ui_weak: slint::Weak<AppWindow>) {
+    let ui_weak_clone = ui_weak.clone();
+    let msg_clone = msg.clone();
+    let _ = slint::invoke_from_event_loop(move || {
+        if let Some(ui) = ui_weak_clone.upgrade() {
+            ui.set_toast_message(SharedString::from(msg_clone));
+            ui.set_show_toast(true);
+        }
+    });
+
+    let ui_timer = ui_weak.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(tokio::time::Duration::from_millis(4000)).await;
+        let _ = slint::invoke_from_event_loop(move || {
+            if let Some(ui) = ui_timer.upgrade() {
+                ui.set_show_toast(false);
+            }
+        });
+    });
+}
+
+async fn update_mirro_files(
+    serial: Option<String>,
+    dir: Option<String>,
+    ui_weak: slint::Weak<AppWindow>,
+) {
     let serial = match serial {
         Some(s) if !s.is_empty() => s,
         _ => {
             let _ = slint::invoke_from_event_loop(move || {
                 if let Some(ui) = ui_weak.upgrade() {
                     ui.set_mirro_files(ModelRc::from(Rc::new(VecModel::from(vec![]))));
+                    ui.set_is_in_subfolder(false);
                 }
             });
             return;
         }
     };
 
-    let files = match AdbClient::list_mirro_files(&serial).await {
+    let target_dir = match dir {
+        Some(d) if !d.is_empty() => d,
+        _ => {
+            let mut cur = "/sdcard/mirro".to_string();
+            if let Some(ui) = ui_weak.upgrade() {
+                let uicur = ui.get_current_mirro_dir().to_string();
+                if !uicur.is_empty() && uicur.starts_with("/sdcard/mirro") {
+                    cur = uicur;
+                }
+            }
+            cur
+        }
+    };
+
+    let is_sub = target_dir.trim_end_matches('/') != "/sdcard/mirro";
+
+    let files = match AdbClient::list_dir(&serial, &target_dir).await {
         Ok(f) => f,
         Err(e) => {
-            tracing::warn!("Falha ao listar arquivos de /sdcard/mirro: {}", e);
+            tracing::warn!("Falha ao listar arquivos de {}: {}", target_dir, e);
             vec![]
         }
     };
@@ -48,10 +90,13 @@ async fn update_mirro_files(serial: Option<String>, ui_weak: slint::Weak<AppWind
         })
         .collect();
 
+    let target_dir_clone = target_dir.clone();
     let _ = slint::invoke_from_event_loop(move || {
         if let Some(ui) = ui_weak.upgrade() {
             let model = Rc::new(VecModel::from(file_models));
             ui.set_mirro_files(ModelRc::from(model));
+            ui.set_current_mirro_dir(SharedString::from(target_dir_clone));
+            ui.set_is_in_subfolder(is_sub);
         }
     });
 }
@@ -59,12 +104,14 @@ async fn update_mirro_files(serial: Option<String>, ui_weak: slint::Weak<AppWind
 async fn push_files_to_device(
     serial: String,
     paths: Vec<std::path::PathBuf>,
+    target_dir: Option<String>,
     ui_weak: slint::Weak<AppWindow>,
 ) {
     if paths.is_empty() {
         return;
     }
 
+    let dir = target_dir.unwrap_or_else(|| "/sdcard/mirro".to_string());
     let count = paths.len();
     let first_name = paths[0]
         .file_name()
@@ -73,61 +120,283 @@ async fn push_files_to_device(
         .to_string();
 
     let msg = if count == 1 {
-        format!("Enviando {} para /mirro...", first_name)
+        format!("Enviando {} para {}...", first_name, dir)
     } else {
-        format!("Enviando {} arquivos para /mirro...", count)
+        format!("Enviando {} arquivos para {}...", count, dir)
     };
 
-    let ui_weak_clone = ui_weak.clone();
-    let msg_clone = msg.clone();
-    let _ = slint::invoke_from_event_loop(move || {
-        if let Some(ui) = ui_weak_clone.upgrade() {
-            ui.set_toast_message(SharedString::from(msg_clone));
-            ui.set_show_toast(true);
-        }
-    });
+    show_temporary_toast(msg, ui_weak.clone());
 
     let mut success_count = 0;
     for path in &paths {
-        if let Err(e) = AdbClient::push_to_mirro(&serial, path).await {
+        let fname = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("arquivo");
+        let remote_dest = format!("{}/{}", dir.trim_end_matches('/'), fname);
+        if let Err(e) = AdbClient::push_file_to(&serial, path, &remote_dest).await {
             error!("Erro ao enviar {:?} para {}: {}", path, serial, e);
         } else {
             success_count += 1;
         }
     }
 
-    // Atualiza a lista de arquivos de /sdcard/mirro
-    update_mirro_files(Some(serial.clone()), ui_weak.clone()).await;
+    // Atualiza a lista de arquivos
+    update_mirro_files(Some(serial.clone()), Some(dir.clone()), ui_weak.clone()).await;
 
     // Toast de sucesso ou erro
     let done_msg = if success_count == count {
         if count == 1 {
-            format!("{} salvo com sucesso em /mirro!", first_name)
+            format!("{} salvo com sucesso em {}!", first_name, dir)
         } else {
-            format!("{} arquivos salvos com sucesso em /mirro!", count)
+            format!("{} arquivos salvos com sucesso em {}!", count, dir)
         }
     } else {
         format!("{}/{} arquivos enviados com sucesso.", success_count, count)
     };
 
-    let ui_weak_done = ui_weak.clone();
+    show_temporary_toast(done_msg, ui_weak);
+}
+
+async fn handle_open_file(
+    serial: String,
+    dir: String,
+    filename: String,
+    is_dir: bool,
+    ui_weak: slint::Weak<AppWindow>,
+) {
+    if is_dir {
+        let new_dir = format!("{}/{}", dir.trim_end_matches('/'), filename);
+        update_mirro_files(Some(serial), Some(new_dir), ui_weak).await;
+        return;
+    }
+
+    let remote_path = format!("{}/{}", dir.trim_end_matches('/'), filename);
+    let cache_dir = std::env::temp_dir().join("mirro_cache");
+    let _ = std::fs::create_dir_all(&cache_dir);
+    let local_path = cache_dir.join(&filename);
+
+    if let Err(e) = AdbClient::pull_file(&serial, &remote_path, &local_path).await {
+        show_temporary_toast(format!("Falha ao baixar arquivo: {}", e), ui_weak);
+        return;
+    }
+
+    let ext = std::path::Path::new(&filename)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    let is_img = ["png", "jpg", "jpeg", "webp", "bmp"].contains(&ext.as_str());
+    if is_img {
+        let local_path_clone = local_path.clone();
+        let fname = filename.clone();
+        let rpath = remote_path.clone();
+        let ui_weak_img = ui_weak.clone();
+        let _ = slint::invoke_from_event_loop(move || {
+            if let Some(ui) = ui_weak_img.upgrade() {
+                if let Ok(img) = slint::Image::load_from_path(&local_path_clone) {
+                    ui.set_viewer_file_name(SharedString::from(fname));
+                    ui.set_viewer_file_path(SharedString::from(rpath));
+                    ui.set_viewer_is_image(true);
+                    ui.set_viewer_image_data(img);
+                    ui.set_viewer_status_badge(SharedString::from("IMAGEM"));
+                    ui.set_show_file_viewer(true);
+                }
+            }
+        });
+        return;
+    }
+
+    let bytes = std::fs::read(&local_path).unwrap_or_default();
+    let text_extensions = [
+        "txt", "md", "json", "xml", "log", "csv", "sh", "yml", "yaml", "ini",
+        "conf", "cfg", "rs", "py", "js", "html", "css", "toml", "env", "properties",
+        "sql", "c", "cpp", "h", "java", "kt", "ts", "bat", "cmd", "ps1",
+    ];
+
+    let is_likely_text = text_extensions.contains(&ext.as_str())
+        || (!bytes.is_empty() && !bytes.contains(&0) && std::str::from_utf8(&bytes).is_ok());
+
+    if is_likely_text {
+        let content = String::from_utf8_lossy(&bytes).to_string();
+        let fname = filename.clone();
+        let rpath = remote_path.clone();
+        let _ = slint::invoke_from_event_loop(move || {
+            if let Some(ui) = ui_weak.upgrade() {
+                ui.set_viewer_file_name(SharedString::from(fname));
+                ui.set_viewer_file_path(SharedString::from(rpath));
+                ui.set_viewer_is_image(false);
+                ui.set_viewer_file_content(SharedString::from(content));
+                ui.set_viewer_status_badge(SharedString::from("EDITÁVEL"));
+                ui.set_show_file_viewer(true);
+            }
+        });
+    } else {
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            let _ = std::process::Command::new("cmd")
+                .args(["/C", "start", "", local_path.to_str().unwrap_or_default()])
+                .creation_flags(CREATE_NO_WINDOW)
+                .spawn();
+        }
+        show_temporary_toast(
+            "Arquivo aberto no aplicativo padrão do Windows.".to_string(),
+            ui_weak,
+        );
+    }
+}
+
+async fn handle_save_viewer_file(
+    serial: String,
+    remote_path: String,
+    content: String,
+    ui_weak: slint::Weak<AppWindow>,
+) {
+    let cache_dir = std::env::temp_dir().join("mirro_cache");
+    let _ = std::fs::create_dir_all(&cache_dir);
+    let local_path = cache_dir.join("temp_save.tmp");
+    if let Err(e) = std::fs::write(&local_path, content.as_bytes()) {
+        error!("Erro ao salvar arquivo temporário: {}", e);
+        show_temporary_toast(format!("Erro ao preparar arquivo: {}", e), ui_weak);
+        return;
+    }
+
+    match AdbClient::push_file_to(&serial, &local_path, &remote_path).await {
+        Ok(_) => {
+            let ui_weak_clone = ui_weak.clone();
+            let _ = slint::invoke_from_event_loop(move || {
+                if let Some(ui) = ui_weak_clone.upgrade() {
+                    ui.set_viewer_status_badge(SharedString::from("SALVO"));
+                    ui.set_toast_message(SharedString::from("Arquivo salvo com sucesso no celular!"));
+                    ui.set_show_toast(true);
+                }
+            });
+            update_mirro_files(Some(serial), None, ui_weak).await;
+        }
+        Err(e) => {
+            error!("Erro ao enviar arquivo para o celular: {}", e);
+            show_temporary_toast(format!("Falha ao salvar no smartphone: {}", e), ui_weak);
+        }
+    }
+}
+
+async fn handle_open_viewer_file_in_pc(
+    filename: String,
+    ui_weak: slint::Weak<AppWindow>,
+) {
+    let local_path = std::env::temp_dir().join("mirro_cache").join(&filename);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        let _ = std::process::Command::new("cmd")
+            .args(["/C", "start", "", local_path.to_str().unwrap_or_default()])
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn();
+    }
+    show_temporary_toast(
+        "Arquivo aberto no aplicativo padrão do Windows.".to_string(),
+        ui_weak,
+    );
+}
+
+async fn handle_paste_file(
+    serial: String,
+    current_dir: String,
+    src_dir: String,
+    filename: String,
+    is_cut: bool,
+    ui_weak: slint::Weak<AppWindow>,
+) {
+    let src = format!("{}/{}", src_dir.trim_end_matches('/'), filename);
+    let dst = if current_dir == src_dir && !is_cut {
+        format!("{}/copia_{}", current_dir.trim_end_matches('/'), filename)
+    } else {
+        format!("{}/{}", current_dir.trim_end_matches('/'), filename)
+    };
+
+    let res = if is_cut {
+        AdbClient::move_file(&serial, &src, &dst).await
+    } else {
+        AdbClient::copy_file(&serial, &src, &dst).await
+    };
+
+    let ui_weak_clone = ui_weak.clone();
+    let msg = match res {
+        Ok(_) => {
+            if is_cut {
+                "Arquivo movido com sucesso!".to_string()
+            } else {
+                "Arquivo copiado com sucesso!".to_string()
+            }
+        }
+        Err(e) => format!("Falha ao colar arquivo: {}", e),
+    };
+
     let _ = slint::invoke_from_event_loop(move || {
-        if let Some(ui) = ui_weak_done.upgrade() {
-            ui.set_toast_message(SharedString::from(done_msg));
+        if let Some(ui) = ui_weak_clone.upgrade() {
+            if is_cut {
+                ui.set_is_cut_mode(false);
+                ui.set_has_clipboard_file(false);
+                ui.set_clipboard_file_name(SharedString::from(""));
+            }
+            ui.set_toast_message(SharedString::from(msg));
             ui.set_show_toast(true);
         }
     });
 
-    // Oculta toast após 4 segundos
-    let ui_timer = ui_weak.clone();
-    tokio::spawn(async move {
-        tokio::time::sleep(tokio::time::Duration::from_millis(4000)).await;
-        let _ = slint::invoke_from_event_loop(move || {
-            if let Some(ui) = ui_timer.upgrade() {
-                ui.set_show_toast(false);
-            }
-        });
+    update_mirro_files(Some(serial), Some(current_dir), ui_weak).await;
+}
+
+async fn handle_delete_file(
+    serial: String,
+    current_dir: String,
+    filename: String,
+    ui_weak: slint::Weak<AppWindow>,
+) {
+    let target = format!("{}/{}", current_dir.trim_end_matches('/'), filename);
+    let res = AdbClient::delete_file(&serial, &target).await;
+    let ui_weak_clone = ui_weak.clone();
+    let msg = match res {
+        Ok(_) => format!("{} apagado com sucesso!", filename),
+        Err(e) => format!("Falha ao apagar: {}", e),
+    };
+
+    let _ = slint::invoke_from_event_loop(move || {
+        if let Some(ui) = ui_weak_clone.upgrade() {
+            ui.set_selected_file_idx(-1);
+            ui.set_selected_file_name(SharedString::from(""));
+            ui.set_toast_message(SharedString::from(msg));
+            ui.set_show_toast(true);
+        }
     });
+
+    update_mirro_files(Some(serial), Some(current_dir), ui_weak).await;
+}
+
+async fn handle_download_file(
+    serial: String,
+    current_dir: String,
+    filename: String,
+    ui_weak: slint::Weak<AppWindow>,
+) {
+    let save_path = rfd::FileDialog::new()
+        .set_title("Salvar arquivo no computador")
+        .set_file_name(&filename)
+        .save_file();
+
+    if let Some(path) = save_path {
+        let remote_path = format!("{}/{}", current_dir.trim_end_matches('/'), filename);
+        let res = AdbClient::pull_file(&serial, &remote_path, &path).await;
+        let msg = match res {
+            Ok(_) => format!("{} salvo no computador com sucesso!", filename),
+            Err(e) => format!("Falha ao salvar no computador: {}", e),
+        };
+        show_temporary_toast(msg, ui_weak);
+    }
 }
 
 async fn update_devices(
@@ -195,7 +464,7 @@ async fn update_devices(
     });
 
     // Atualiza a lista de arquivos de /sdcard/mirro para o aparelho selecionado
-    update_mirro_files(current_selected, ui_weak.clone()).await;
+    update_mirro_files(current_selected, None, ui_weak.clone()).await;
 
     // Se houver aparelho pronto e nenhum screenshot em cache para ele, restaura do disco ou captura
     if let Some(serial) = first_ready_serial {
@@ -341,7 +610,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             tokio::spawn(async move {
                 let serial_opt = selected_serial.read().await.clone();
                 if let Some(serial) = serial_opt {
-                    push_files_to_device(serial, paths, ui_weak).await;
+                    let dir = if let Some(ui) = ui_weak.upgrade() {
+                        Some(ui.get_current_mirro_dir().to_string())
+                    } else {
+                        None
+                    };
+                    push_files_to_device(serial, paths, dir, ui_weak).await;
                 } else {
                     let _ = slint::invoke_from_event_loop(move || {
                         if let Some(ui) = ui_weak.upgrade() {
@@ -365,7 +639,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let ui_weak = ui_weak.clone();
             tokio::spawn(async move {
                 let serial = selected_serial.read().await.clone();
-                update_mirro_files(serial, ui_weak).await;
+                update_mirro_files(serial, None, ui_weak).await;
             });
         });
     }
@@ -399,9 +673,295 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .pick_files();
 
                 if let Some(paths) = files {
-                    push_files_to_device(serial, paths, ui_weak).await;
+                    let dir = if let Some(ui) = ui_weak.upgrade() {
+                        Some(ui.get_current_mirro_dir().to_string())
+                    } else {
+                        None
+                    };
+                    push_files_to_device(serial, paths, dir, ui_weak).await;
                 }
             });
+        });
+    }
+
+    // Callbacks do Gerenciador de Arquivos (/mirro)
+    let last_click_state = Arc::new(tokio::sync::Mutex::new((None::<String>, std::time::Instant::now())));
+
+    // Clique único ou duplo em item da lista
+    {
+        let selected_serial_clone = selected_serial.clone();
+        let ui_weak = ui.as_weak();
+        let last_click = last_click_state.clone();
+        ui.on_file_single_clicked(move |idx, filename, is_dir| {
+            let selected_serial = selected_serial_clone.clone();
+            let ui_weak = ui_weak.clone();
+            let last_click = last_click.clone();
+            let filename_str = filename.to_string();
+            tokio::spawn(async move {
+                let now = std::time::Instant::now();
+                let is_double_click = {
+                    let mut lock = last_click.lock().await;
+                    let (ref last_name, ref last_time) = *lock;
+                    let is_match = last_name.as_deref() == Some(&filename_str)
+                        && now.duration_since(*last_time) < std::time::Duration::from_millis(400);
+                    *lock = (Some(filename_str.clone()), now);
+                    is_match
+                };
+
+                let serial_opt = selected_serial.read().await.clone();
+                let serial = match serial_opt {
+                    Some(s) => s,
+                    None => return,
+                };
+
+                let dir = if let Some(ui) = ui_weak.upgrade() {
+                    ui.get_current_mirro_dir().to_string()
+                } else {
+                    "/sdcard/mirro".to_string()
+                };
+
+                if is_double_click {
+                    handle_open_file(serial, dir, filename_str, is_dir, ui_weak).await;
+                } else {
+                    let _ = slint::invoke_from_event_loop(move || {
+                        if let Some(ui) = ui_weak.upgrade() {
+                            ui.set_selected_file_idx(idx);
+                            ui.set_selected_file_name(SharedString::from(filename_str));
+                        }
+                    });
+                }
+            });
+        });
+    }
+
+    // Clique com botão direito em item (Abre menu suspenso igualzinho explorador de arquivos)
+    {
+        let ui_weak = ui.as_weak();
+        ui.on_file_right_clicked(move |idx, filename, is_dir, y_pos| {
+            if let Some(ui) = ui_weak.upgrade() {
+                ui.set_context_menu_file_idx(idx);
+                ui.set_context_menu_file_name(filename.clone());
+                ui.set_context_menu_is_dir(is_dir);
+                ui.set_selected_file_idx(idx);
+                ui.set_selected_file_name(filename);
+                let clamped_y = y_pos.max(90.0).min(380.0);
+                ui.set_context_menu_y(clamped_y);
+                ui.set_show_file_context_menu(true);
+            }
+        });
+    }
+
+    // Ação: Abrir Arquivo / Pasta
+    {
+        let selected_serial_clone = selected_serial.clone();
+        let ui_weak = ui.as_weak();
+        ui.on_open_file(move |filename, is_dir| {
+            let selected_serial = selected_serial_clone.clone();
+            let ui_weak = ui_weak.clone();
+            let fname = filename.to_string();
+            tokio::spawn(async move {
+                let serial_opt = selected_serial.read().await.clone();
+                if let Some(serial) = serial_opt {
+                    let dir = if let Some(ui) = ui_weak.upgrade() {
+                        ui.get_current_mirro_dir().to_string()
+                    } else {
+                        "/sdcard/mirro".to_string()
+                    };
+                    handle_open_file(serial, dir, fname, is_dir, ui_weak).await;
+                }
+            });
+        });
+    }
+
+    // Ação: Copiar
+    {
+        let ui_weak = ui.as_weak();
+        ui.on_copy_file_action(move |filename| {
+            if let Some(ui) = ui_weak.upgrade() {
+                let cur = ui.get_current_mirro_dir();
+                ui.set_clipboard_file_name(filename.clone());
+                ui.set_clipboard_source_dir(cur);
+                ui.set_is_cut_mode(false);
+                ui.set_has_clipboard_file(true);
+                show_temporary_toast(format!("Copiado: {}", filename), ui_weak.clone());
+            }
+        });
+    }
+
+    // Ação: Recortar
+    {
+        let ui_weak = ui.as_weak();
+        ui.on_cut_file_action(move |filename| {
+            if let Some(ui) = ui_weak.upgrade() {
+                let cur = ui.get_current_mirro_dir();
+                ui.set_clipboard_file_name(filename.clone());
+                ui.set_clipboard_source_dir(cur);
+                ui.set_is_cut_mode(true);
+                ui.set_has_clipboard_file(true);
+                show_temporary_toast(format!("Recortado: {}", filename), ui_weak.clone());
+            }
+        });
+    }
+
+    // Ação: Colar
+    {
+        let selected_serial_clone = selected_serial.clone();
+        let ui_weak = ui.as_weak();
+        ui.on_paste_file_action(move || {
+            let selected_serial = selected_serial_clone.clone();
+            let ui_weak = ui_weak.clone();
+            tokio::spawn(async move {
+                let serial_opt = selected_serial.read().await.clone();
+                let serial = match serial_opt {
+                    Some(s) => s,
+                    None => return,
+                };
+
+                let (cur_dir, src_dir, filename, is_cut) = if let Some(ui) = ui_weak.upgrade() {
+                    (
+                        ui.get_current_mirro_dir().to_string(),
+                        ui.get_clipboard_source_dir().to_string(),
+                        ui.get_clipboard_file_name().to_string(),
+                        ui.get_is_cut_mode(),
+                    )
+                } else {
+                    return;
+                };
+
+                if filename.is_empty() {
+                    return;
+                }
+
+                handle_paste_file(serial, cur_dir, src_dir, filename, is_cut, ui_weak).await;
+            });
+        });
+    }
+
+    // Ação: Apagar
+    {
+        let selected_serial_clone = selected_serial.clone();
+        let ui_weak = ui.as_weak();
+        ui.on_delete_file_action(move |filename| {
+            let selected_serial = selected_serial_clone.clone();
+            let ui_weak = ui_weak.clone();
+            let fname = filename.to_string();
+            tokio::spawn(async move {
+                let serial_opt = selected_serial.read().await.clone();
+                if let Some(serial) = serial_opt {
+                    let dir = if let Some(ui) = ui_weak.upgrade() {
+                        ui.get_current_mirro_dir().to_string()
+                    } else {
+                        "/sdcard/mirro".to_string()
+                    };
+                    handle_delete_file(serial, dir, fname, ui_weak).await;
+                }
+            });
+        });
+    }
+
+    // Ação: Baixar para o PC
+    {
+        let selected_serial_clone = selected_serial.clone();
+        let ui_weak = ui.as_weak();
+        ui.on_download_file_action(move |filename| {
+            let selected_serial = selected_serial_clone.clone();
+            let ui_weak = ui_weak.clone();
+            let fname = filename.to_string();
+            tokio::spawn(async move {
+                let serial_opt = selected_serial.read().await.clone();
+                if let Some(serial) = serial_opt {
+                    let dir = if let Some(ui) = ui_weak.upgrade() {
+                        ui.get_current_mirro_dir().to_string()
+                    } else {
+                        "/sdcard/mirro".to_string()
+                    };
+                    handle_download_file(serial, dir, fname, ui_weak).await;
+                }
+            });
+        });
+    }
+
+    // Ação: Voltar para pasta pai (Navegação de subpastas)
+    {
+        let selected_serial_clone = selected_serial.clone();
+        let ui_weak = ui.as_weak();
+        ui.on_navigate_parent_dir(move || {
+            let selected_serial = selected_serial_clone.clone();
+            let ui_weak = ui_weak.clone();
+            tokio::spawn(async move {
+                let serial_opt = selected_serial.read().await.clone();
+                if let Some(serial) = serial_opt {
+                    let cur = if let Some(ui) = ui_weak.upgrade() {
+                        ui.get_current_mirro_dir().to_string()
+                    } else {
+                        "/sdcard/mirro".to_string()
+                    };
+                    let clean = cur.trim_end_matches('/');
+                    let parent_dir = if clean == "/sdcard/mirro" || !clean.starts_with("/sdcard/mirro") {
+                        "/sdcard/mirro".to_string()
+                    } else {
+                        let parts: Vec<&str> = clean.split('/').collect();
+                        if parts.len() > 3 {
+                            parts[..parts.len() - 1].join("/")
+                        } else {
+                            "/sdcard/mirro".to_string()
+                        }
+                    };
+                    update_mirro_files(Some(serial), Some(parent_dir), ui_weak).await;
+                }
+            });
+        });
+    }
+
+    // Ação: Salvar arquivo do editor de volta no smartphone
+    {
+        let selected_serial_clone = selected_serial.clone();
+        let ui_weak = ui.as_weak();
+        ui.on_save_viewer_file(move |content| {
+            let selected_serial = selected_serial_clone.clone();
+            let ui_weak = ui_weak.clone();
+            let cnt = content.to_string();
+            tokio::spawn(async move {
+                let serial_opt = selected_serial.read().await.clone();
+                if let Some(serial) = serial_opt {
+                    let rpath = if let Some(ui) = ui_weak.upgrade() {
+                        ui.get_viewer_file_path().to_string()
+                    } else {
+                        String::new()
+                    };
+                    if !rpath.is_empty() {
+                        handle_save_viewer_file(serial, rpath, cnt, ui_weak).await;
+                    }
+                }
+            });
+        });
+    }
+
+    // Ação: Abrir arquivo do editor no PC
+    {
+        let ui_weak = ui.as_weak();
+        ui.on_open_viewer_file_in_pc(move || {
+            let ui_weak_clone = ui_weak.clone();
+            let fname = if let Some(ui) = ui_weak.upgrade() {
+                ui.get_viewer_file_name().to_string()
+            } else {
+                String::new()
+            };
+            if !fname.is_empty() {
+                tokio::spawn(async move {
+                    handle_open_viewer_file_in_pc(fname, ui_weak_clone).await;
+                });
+            }
+        });
+    }
+
+    // Ação: Fechar modal de visualização/edição
+    {
+        let ui_weak = ui.as_weak();
+        ui.on_close_file_viewer(move || {
+            if let Some(ui) = ui_weak.upgrade() {
+                ui.set_show_file_viewer(false);
+            }
         });
     }
 
@@ -422,7 +982,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let mut write = selected_serial_clone.write().await;
                     *write = Some(serial_str.clone());
                 }
-                update_mirro_files(Some(serial_files), ui_weak_files).await;
+                update_mirro_files(Some(serial_files), None, ui_weak_files).await;
                 snapshot_mgr.load_or_capture(serial_str, ui_weak).await;
             });
         });

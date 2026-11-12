@@ -223,6 +223,7 @@ impl AdbClient {
     }
 
     /// Envia um arquivo local para /sdcard/mirro/ no smartphone.
+    #[allow(dead_code)]
     pub async fn push_to_mirro(serial: &str, local_path: &std::path::Path) -> Result<(), String> {
         Self::ensure_mirro_dir(serial).await?;
 
@@ -252,14 +253,43 @@ impl AdbClient {
         }
     }
 
+    #[allow(dead_code)]
     /// Lista os arquivos e pastas existentes em /sdcard/mirro/ no smartphone.
     pub async fn list_mirro_files(serial: &str) -> Result<Vec<MirroFileItem>, String> {
-        // Garante a existência do diretório
-        let _ = Self::ensure_mirro_dir(serial).await;
+        Self::list_dir(serial, "/sdcard/mirro").await
+    }
 
+    /// Garante a existência de qualquer diretório remoto no smartphone.
+    pub async fn ensure_dir(serial: &str, dir: &str) -> Result<(), String> {
         let adb_path = Locator::get_adb_path();
         let mut cmd = Command::new(&adb_path);
-        cmd.args(["-s", serial, "shell", "ls", "-1p", "/sdcard/mirro/"])
+        cmd.args(["-s", serial, "shell", "mkdir", "-p", dir])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .creation_flags(CREATE_NO_WINDOW);
+
+        match cmd.output().await {
+            Ok(output) => {
+                if output.status.success() {
+                    Ok(())
+                } else {
+                    let err = String::from_utf8_lossy(&output.stderr).to_string();
+                    Err(err)
+                }
+            }
+            Err(e) => Err(format!("Falha ao criar diretório remoto {}: {:?}", dir, e)),
+        }
+    }
+
+    /// Lista os arquivos e pastas existentes em qualquer diretório no smartphone.
+    pub async fn list_dir(serial: &str, dir: &str) -> Result<Vec<MirroFileItem>, String> {
+        let clean_dir = dir.trim_end_matches('/');
+        let _ = Self::ensure_dir(serial, clean_dir).await;
+
+        let target_dir = format!("{}/", clean_dir);
+        let adb_path = Locator::get_adb_path();
+        let mut cmd = Command::new(&adb_path);
+        cmd.args(["-s", serial, "shell", "ls", "-1p", &target_dir])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .creation_flags(CREATE_NO_WINDOW);
@@ -273,7 +303,145 @@ impl AdbClient {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 Ok(Self::parse_mirro_files(&stdout))
             }
-            Err(e) => Err(format!("Falha ao listar arquivos de /sdcard/mirro/: {:?}", e)),
+            Err(e) => Err(format!("Falha ao listar arquivos de {}: {:?}", target_dir, e)),
+        }
+    }
+
+    /// Exclui arquivo ou pasta no smartphone (rm -rf).
+    pub async fn delete_file(serial: &str, remote_path: &str) -> Result<(), String> {
+        let adb_path = Locator::get_adb_path();
+        let mut cmd = Command::new(&adb_path);
+        cmd.args(["-s", serial, "shell", "rm", "-rf", remote_path])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .creation_flags(CREATE_NO_WINDOW);
+
+        match cmd.output().await {
+            Ok(output) => {
+                if output.status.success() {
+                    info!("Arquivo {} apagado com sucesso em {}", remote_path, serial);
+                    Ok(())
+                } else {
+                    let err = String::from_utf8_lossy(&output.stderr).to_string();
+                    Err(err)
+                }
+            }
+            Err(e) => Err(format!("Falha ao apagar arquivo {}: {:?}", remote_path, e)),
+        }
+    }
+
+    /// Copia arquivo ou pasta remotamente no smartphone (cp -r).
+    pub async fn copy_file(serial: &str, src: &str, dst: &str) -> Result<(), String> {
+        let adb_path = Locator::get_adb_path();
+        let mut cmd = Command::new(&adb_path);
+        cmd.args(["-s", serial, "shell", "cp", "-r", src, dst])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .creation_flags(CREATE_NO_WINDOW);
+
+        match cmd.output().await {
+            Ok(output) => {
+                if output.status.success() {
+                    info!("Copiado {} -> {} em {}", src, dst, serial);
+                    Ok(())
+                } else {
+                    let err = String::from_utf8_lossy(&output.stderr).to_string();
+                    Err(err)
+                }
+            }
+            Err(e) => Err(format!("Falha ao copiar de {} para {}: {:?}", src, dst, e)),
+        }
+    }
+
+    /// Move ou recorta arquivo ou pasta remotamente no smartphone (mv).
+    pub async fn move_file(serial: &str, src: &str, dst: &str) -> Result<(), String> {
+        let adb_path = Locator::get_adb_path();
+        let mut cmd = Command::new(&adb_path);
+        cmd.args(["-s", serial, "shell", "mv", src, dst])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .creation_flags(CREATE_NO_WINDOW);
+
+        match cmd.output().await {
+            Ok(output) => {
+                if output.status.success() {
+                    info!("Movido {} -> {} em {}", src, dst, serial);
+                    Ok(())
+                } else {
+                    let err = String::from_utf8_lossy(&output.stderr).to_string();
+                    Err(err)
+                }
+            }
+            Err(e) => Err(format!("Falha ao mover de {} para {}: {:?}", src, dst, e)),
+        }
+    }
+
+    /// Baixa um arquivo do smartphone para o computador local (adb pull).
+    pub async fn pull_file(
+        serial: &str,
+        remote_path: &str,
+        local_path: &std::path::Path,
+    ) -> Result<(), String> {
+        let adb_path = Locator::get_adb_path();
+        let mut cmd = Command::new(&adb_path);
+        cmd.args([
+            "-s",
+            serial,
+            "pull",
+            remote_path,
+            local_path.to_str().unwrap_or_default(),
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .creation_flags(CREATE_NO_WINDOW);
+
+        match cmd.output().await {
+            Ok(output) => {
+                if output.status.success() {
+                    info!("Arquivo {} baixado para {:?}", remote_path, local_path);
+                    Ok(())
+                } else {
+                    let err = String::from_utf8_lossy(&output.stderr).to_string();
+                    Err(err)
+                }
+            }
+            Err(e) => Err(format!("Falha ao executar adb pull de {}: {:?}", remote_path, e)),
+        }
+    }
+
+    /// Envia um arquivo local para um caminho remoto específico no smartphone (adb push).
+    pub async fn push_file_to(
+        serial: &str,
+        local_path: &std::path::Path,
+        remote_path: &str,
+    ) -> Result<(), String> {
+        let adb_path = Locator::get_adb_path();
+        let mut cmd = Command::new(&adb_path);
+        cmd.args([
+            "-s",
+            serial,
+            "push",
+            local_path.to_str().unwrap_or_default(),
+            remote_path,
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .creation_flags(CREATE_NO_WINDOW);
+
+        match cmd.output().await {
+            Ok(output) => {
+                if output.status.success() {
+                    info!(
+                        "Arquivo {:?} enviado para {} em {}",
+                        local_path, remote_path, serial
+                    );
+                    Ok(())
+                } else {
+                    let err = String::from_utf8_lossy(&output.stderr).to_string();
+                    Err(err)
+                }
+            }
+            Err(e) => Err(format!("Falha ao executar adb push para {}: {:?}", remote_path, e)),
         }
     }
 
@@ -368,5 +536,20 @@ mod tests {
         assert!(!items[4].is_dir);
         assert_eq!(items[4].name, "notas.txt");
         assert_eq!(items[4].file_type, "TXT");
+    }
+
+    #[test]
+    fn test_file_item_extension_types() {
+        let file_txt = MirroFileItem::new("documento.txt", false);
+        assert_eq!(file_txt.file_type, "TXT");
+        assert!(!file_txt.is_dir);
+
+        let file_png = MirroFileItem::new("foto.png", false);
+        assert_eq!(file_png.file_type, "PNG");
+
+        let folder = MirroFileItem::new("minha_pasta/", true);
+        assert_eq!(folder.name, "minha_pasta");
+        assert_eq!(folder.file_type, "PASTA");
+        assert!(folder.is_dir);
     }
 }
