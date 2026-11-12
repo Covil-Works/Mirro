@@ -335,7 +335,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let selected_serial_clone = selected_serial.clone();
         let ui_weak = ui.as_weak();
-        tools::drag_drop::DragDropManager::init(move |paths| {
+        tools::drag_drop::DragDropManager::init(ui.as_weak(), move |paths| {
             let selected_serial = selected_serial_clone.clone();
             let ui_weak = ui_weak.clone();
             tokio::spawn(async move {
@@ -605,6 +605,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
+    ui.show()?;
     ui.run()?;
     Ok(())
 }
