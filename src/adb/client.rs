@@ -1,11 +1,38 @@
 use std::process::Stdio;
 use tokio::process::Command;
-use tracing::{debug, error, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::config::ConfigManager;
 use crate::tools::locator::Locator;
 
 const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MirroFileItem {
+    pub name: String,
+    pub is_dir: bool,
+    pub file_type: String,
+}
+
+impl MirroFileItem {
+    pub fn new(raw_name: &str, is_dir: bool) -> Self {
+        let name = raw_name.trim_end_matches('/').to_string();
+        let file_type = if is_dir {
+            "PASTA".to_string()
+        } else {
+            let ext = std::path::Path::new(&name)
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("ARQUIVO");
+            ext.to_ascii_uppercase()
+        };
+        Self {
+            name,
+            is_dir,
+            file_type,
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeviceStatus {
@@ -171,6 +198,107 @@ impl AdbClient {
             Err(e) => Err(format!("Falha ao despachar keyevent: {:?}", e)),
         }
     }
+
+    /// Garante que o diretório /sdcard/mirro exista no smartphone.
+    /// Se a pasta já existir, a operação não gera erro e prossegue normalmente.
+    pub async fn ensure_mirro_dir(serial: &str) -> Result<(), String> {
+        let adb_path = Locator::get_adb_path();
+        let mut cmd = Command::new(&adb_path);
+        cmd.args(["-s", serial, "shell", "mkdir", "-p", "/sdcard/mirro"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .creation_flags(CREATE_NO_WINDOW);
+
+        match cmd.output().await {
+            Ok(output) => {
+                if output.status.success() {
+                    Ok(())
+                } else {
+                    let err = String::from_utf8_lossy(&output.stderr).to_string();
+                    Err(err)
+                }
+            }
+            Err(e) => Err(format!("Falha ao criar pasta /sdcard/mirro: {:?}", e)),
+        }
+    }
+
+    /// Envia um arquivo local para /sdcard/mirro/ no smartphone.
+    pub async fn push_to_mirro(serial: &str, local_path: &std::path::Path) -> Result<(), String> {
+        Self::ensure_mirro_dir(serial).await?;
+
+        let adb_path = Locator::get_adb_path();
+        let mut cmd = Command::new(&adb_path);
+        cmd.args(["-s", serial, "push"])
+            .arg(local_path)
+            .arg("/sdcard/mirro/")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .creation_flags(CREATE_NO_WINDOW);
+
+        match cmd.output().await {
+            Ok(output) => {
+                if output.status.success() {
+                    info!(
+                        "Arquivo {:?} enviado para /sdcard/mirro/ no dispositivo {}",
+                        local_path, serial
+                    );
+                    Ok(())
+                } else {
+                    let err = String::from_utf8_lossy(&output.stderr).to_string();
+                    Err(err)
+                }
+            }
+            Err(e) => Err(format!("Falha ao executar adb push: {:?}", e)),
+        }
+    }
+
+    /// Lista os arquivos e pastas existentes em /sdcard/mirro/ no smartphone.
+    pub async fn list_mirro_files(serial: &str) -> Result<Vec<MirroFileItem>, String> {
+        // Garante a existência do diretório
+        let _ = Self::ensure_mirro_dir(serial).await;
+
+        let adb_path = Locator::get_adb_path();
+        let mut cmd = Command::new(&adb_path);
+        cmd.args(["-s", serial, "shell", "ls", "-1p", "/sdcard/mirro/"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .creation_flags(CREATE_NO_WINDOW);
+
+        match cmd.output().await {
+            Ok(output) => {
+                if !output.status.success() {
+                    let err = String::from_utf8_lossy(&output.stderr).to_string();
+                    return Err(err);
+                }
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                Ok(Self::parse_mirro_files(&stdout))
+            }
+            Err(e) => Err(format!("Falha ao listar arquivos de /sdcard/mirro/: {:?}", e)),
+        }
+    }
+
+    pub fn parse_mirro_files(output: &str) -> Vec<MirroFileItem> {
+        let mut items = Vec::new();
+        for line in output.lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with("ls:") {
+                continue;
+            }
+            let is_dir = trimmed.ends_with('/');
+            items.push(MirroFileItem::new(trimmed, is_dir));
+        }
+
+        // Ordena: pastas primeiro, depois arquivos por ordem alfabética (case-insensitive)
+        items.sort_by(|a, b| {
+            match (a.is_dir, b.is_dir) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+            }
+        });
+
+        items
+    }
 }
 
 #[cfg(test)]
@@ -211,5 +339,34 @@ mod tests {
                 assert!(img.is_ok(), "Screenshot should be valid PNG");
             }
         }
+    }
+
+    #[test]
+    fn test_parse_mirro_files() {
+        let output = "fotos/\nnotas.txt\ndocumento.pdf\nbackup/\naplicativo.apk\n";
+        let items = AdbClient::parse_mirro_files(output);
+        assert_eq!(items.len(), 5);
+
+        // Pastas primeiro
+        assert!(items[0].is_dir);
+        assert_eq!(items[0].name, "backup");
+        assert_eq!(items[0].file_type, "PASTA");
+
+        assert!(items[1].is_dir);
+        assert_eq!(items[1].name, "fotos");
+        assert_eq!(items[1].file_type, "PASTA");
+
+        // Arquivos depois
+        assert!(!items[2].is_dir);
+        assert_eq!(items[2].name, "aplicativo.apk");
+        assert_eq!(items[2].file_type, "APK");
+
+        assert!(!items[3].is_dir);
+        assert_eq!(items[3].name, "documento.pdf");
+        assert_eq!(items[3].file_type, "PDF");
+
+        assert!(!items[4].is_dir);
+        assert_eq!(items[4].name, "notas.txt");
+        assert_eq!(items[4].file_type, "TXT");
     }
 }

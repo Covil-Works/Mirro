@@ -96,6 +96,9 @@ impl MirrorManager {
         }
         cmd.env("SCRCPY_ICON_DIR", &scrcpy_dir);
 
+        // Assegura que a pasta /sdcard/mirro exista no smartphone para recebimento de arquivos
+        let _ = crate::adb::AdbClient::ensure_mirro_dir(&serial).await;
+
         // Argumentos de execução
         let mut args = vec![
             "-s".to_string(),
@@ -104,6 +107,7 @@ impl MirrorManager {
             "--window-title".to_string(),
             window_title,
             "--background-color=#000000".to_string(),
+            "--push-target=/sdcard/mirro/".to_string(),
         ];
 
         if always_on_top {

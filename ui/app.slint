@@ -15,6 +15,12 @@ export struct DeviceCardData {
     is_mirroring: bool,
 }
 
+export struct MirroFileData {
+    name: string,
+    file_type: string,
+    is_dir: bool,
+}
+
 component MonoButton inherits Rectangle {
     in property <string> text;
     in property <bool> enabled: true;
@@ -734,14 +740,16 @@ component GenericPhoneFrame inherits Rectangle {
 export component AppWindow inherits Window {
     title: "Mirro";
     icon: @image-url("icons/mirro-icon.svg");
-    min-width: 960px;
+    min-width: 1040px;
     min-height: 660px;
-    preferred-width: 1080px;
+    preferred-width: 1180px;
     preferred-height: 720px;
     background: #000000;
     default-font-family: "Poppins, Segoe UI, sans-serif";
 
     in-out property <[DeviceCardData]> devices: [];
+    in-out property <[MirroFileData]> mirro_files: [];
+    in-out property <bool> is_loading_files: false;
     in-out property <bool> is_refreshing: false;
     in-out property <bool> show_rename_dialog: false;
     in-out property <string> rename_serial: "";
@@ -765,6 +773,8 @@ export component AppWindow inherits Window {
     in-out property <bool> show_toast: false;
 
     callback refresh_requested();
+    callback refresh_mirro_files();
+    callback pick_and_send_file();
     callback mirror_toggled(string, bool, bool);
     callback device_selected(string);
     callback nav_action(string, string);
@@ -1515,7 +1525,7 @@ export component AppWindow inherits Window {
                 // Palco Central: Moldura do Telefone + Painel de Funções ao lado
                 HorizontalLayout {
                     alignment: center;
-                    spacing: 36px;
+                    spacing: 24px;
 
                     // Moldura Estilo iPhone
                     GenericPhoneFrame {
@@ -1533,7 +1543,7 @@ export component AppWindow inherits Window {
 
                     // Painel Lateral de Funções do Telefone
                     Rectangle {
-                        width: 240px;
+                        width: 230px;
                         height: 580px;
                         border-radius: 8px;
                         border-width: 1px;
@@ -1876,6 +1886,243 @@ export component AppWindow inherits Window {
                                                 root.toggle_quick_shortcut("menu", val);
                                             }
                                         }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // ==========================================
+                    // SEÇÃO DE ARQUIVOS EM /mirro (Ao lado direito das ações)
+                    // ==========================================
+                    Rectangle {
+                        width: 250px;
+                        height: 580px;
+                        border-radius: 8px;
+                        border-width: 1px;
+                        border-color: #1e1e1e;
+                        background: #080808;
+
+                        VerticalLayout {
+                            padding: 16px;
+                            spacing: 12px;
+
+                            // Cabeçalho da Seção de Arquivos
+                            VerticalLayout {
+                                spacing: 4px;
+
+                                HorizontalLayout {
+                                    height: 20px;
+                                    alignment: space-between;
+                                    cross-axis-alignment: center;
+
+                                    Text {
+                                        text: "ARQUIVOS /MIRRO";
+                                        color: #ffffff;
+                                        font-size: 11px;
+                                        font-weight: 700;
+                                        letter-spacing: 0.8px;
+                                        vertical-alignment: center;
+                                    }
+
+                                    Rectangle {
+                                        height: 18px;
+                                        border-radius: 2px;
+                                        border-width: 1px;
+                                        border-color: #333333;
+                                        background: #111111;
+                                        HorizontalLayout {
+                                            padding-left: 6px;
+                                            padding-right: 6px;
+                                            alignment: center;
+                                            cross-axis-alignment: center;
+                                            Text {
+                                                text: root.mirro_files.length > 0 ? (root.mirro_files.length + " ITEM(S)") : "VAZIO";
+                                                color: #888888;
+                                                font-size: 9px;
+                                                font-weight: 700;
+                                                vertical-alignment: center;
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Text {
+                                    text: "Pasta raiz no smartphone (/sdcard/mirro)";
+                                    color: #555555;
+                                    font-size: 9.5px;
+                                    wrap: word-wrap;
+                                }
+                            }
+
+                            // Ações Rápidas de Arquivos
+                            HorizontalLayout {
+                                spacing: 8px;
+                                cross-axis-alignment: center;
+
+                                MonoButton {
+                                    text: "ATUALIZAR";
+                                    custom_height: 30px;
+                                    padding_horizontal: 10px;
+                                    enabled: root.has_selected && root.sel_ready;
+                                    clicked => { root.refresh_mirro_files(); }
+                                }
+
+                                MonoButton {
+                                    text: "ENVIAR";
+                                    custom_height: 30px;
+                                    padding_horizontal: 10px;
+                                    enabled: root.has_selected && root.sel_ready;
+                                    clicked => { root.pick_and_send_file(); }
+                                }
+                            }
+
+                            // Divisor fino
+                            Rectangle {
+                                height: 1px;
+                                background: #1a1a1a;
+                            }
+
+                            // Lista de Arquivos ou Estado Vazio
+                            if root.mirro_files.length == 0: VerticalLayout {
+                                vertical-stretch: 1;
+                                alignment: center;
+                                spacing: 10px;
+
+                                Rectangle {
+                                    width: 40px;
+                                    height: 40px;
+                                    border-radius: 20px;
+                                    border-width: 1px;
+                                    border-color: #222222;
+                                    background: #0f0f0f;
+
+                                    Text {
+                                        text: "≡";
+                                        color: #666666;
+                                        font-size: 18px;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                        x: (parent.width - self.width) / 2;
+                                        y: (parent.height - self.height) / 2;
+                                    }
+                                }
+
+                                Text {
+                                    text: "PASTA VAZIA";
+                                    color: #888888;
+                                    font-size: 10px;
+                                    font-weight: 700;
+                                    letter-spacing: 0.8px;
+                                    horizontal-alignment: center;
+                                }
+
+                                Text {
+                                    text: "Arraste arquivos para o celular para salvar em /mirro.";
+                                    color: #555555;
+                                    font-size: 9.5px;
+                                    horizontal-alignment: center;
+                                    wrap: word-wrap;
+                                }
+                            }
+
+                            if root.mirro_files.length > 0: ScrollView {
+                                vertical-stretch: 1;
+
+                                VerticalLayout {
+                                    spacing: 6px;
+                                    alignment: start;
+
+                                    for file in root.mirro_files: Rectangle {
+                                        height: 44px;
+                                        border-radius: 4px;
+                                        border-width: 1px;
+                                        border-color: f_ta.has-hover ? #444444 : #1a1a1a;
+                                        background: f_ta.has-hover ? #141414 : #0b0b0b;
+
+                                        f_ta := TouchArea {}
+
+                                        HorizontalLayout {
+                                            padding-left: 10px;
+                                            padding-right: 10px;
+                                            spacing: 10px;
+                                            cross-axis-alignment: center;
+
+                                            // Emblema do Tipo de Arquivo
+                                            Rectangle {
+                                                width: 42px;
+                                                height: 22px;
+                                                border-radius: 3px;
+                                                border-width: 1px;
+                                                border-color: file.is_dir ? #555555 : #333333;
+                                                background: file.is_dir ? #1a1a1a : #111111;
+
+                                                Text {
+                                                    text: file.file_type;
+                                                    color: file.is_dir ? #ffffff : #aaaaaa;
+                                                    font-size: 8px;
+                                                    font-weight: 800;
+                                                    letter-spacing: 0.3px;
+                                                    horizontal-alignment: center;
+                                                    vertical-alignment: center;
+                                                    x: (parent.width - self.width) / 2;
+                                                    y: (parent.height - self.height) / 2;
+                                                }
+                                            }
+
+                                            // Nome do Arquivo
+                                            VerticalLayout {
+                                                horizontal-stretch: 1;
+                                                alignment: center;
+                                                spacing: 1px;
+
+                                                Text {
+                                                    text: file.name;
+                                                    color: #ffffff;
+                                                    font-size: 11px;
+                                                    font-weight: 600;
+                                                    overflow: elide;
+                                                }
+
+                                                Text {
+                                                    text: file.is_dir ? "Pasta" : "Arquivo";
+                                                    color: #555555;
+                                                    font-size: 9px;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Divisor fino inferior
+                            Rectangle {
+                                height: 1px;
+                                background: #1a1a1a;
+                            }
+
+                            // Dica visual de arrastar e soltar
+                            Rectangle {
+                                height: 32px;
+                                border-radius: 4px;
+                                border-width: 1px;
+                                border-color: #1a1a1a;
+                                background: #060606;
+
+                                HorizontalLayout {
+                                    padding-left: 8px;
+                                    padding-right: 8px;
+                                    alignment: center;
+                                    cross-axis-alignment: center;
+
+                                    Text {
+                                        text: "SOLTE ARQUIVOS NO CELULAR";
+                                        color: #444444;
+                                        font-size: 8.5px;
+                                        font-weight: 700;
+                                        letter-spacing: 0.8px;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
                                     }
                                 }
                             }

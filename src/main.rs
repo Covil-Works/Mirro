@@ -1,7 +1,9 @@
 slint::include_modules!();
 
 use std::rc::Rc;
+use std::sync::Arc;
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
+use tokio::sync::RwLock;
 use tracing::{error, info, Level};
 use tracing_subscriber::FmtSubscriber;
 
@@ -16,9 +18,122 @@ use config::ConfigManager;
 use mirror::MirrorManager;
 use snapshot::SnapshotManager;
 
+async fn update_mirro_files(serial: Option<String>, ui_weak: slint::Weak<AppWindow>) {
+    let serial = match serial {
+        Some(s) if !s.is_empty() => s,
+        _ => {
+            let _ = slint::invoke_from_event_loop(move || {
+                if let Some(ui) = ui_weak.upgrade() {
+                    ui.set_mirro_files(ModelRc::from(Rc::new(VecModel::from(vec![]))));
+                }
+            });
+            return;
+        }
+    };
+
+    let files = match AdbClient::list_mirro_files(&serial).await {
+        Ok(f) => f,
+        Err(e) => {
+            tracing::warn!("Falha ao listar arquivos de /sdcard/mirro: {}", e);
+            vec![]
+        }
+    };
+
+    let file_models: Vec<MirroFileData> = files
+        .into_iter()
+        .map(|f| MirroFileData {
+            name: SharedString::from(f.name),
+            file_type: SharedString::from(f.file_type),
+            is_dir: f.is_dir,
+        })
+        .collect();
+
+    let _ = slint::invoke_from_event_loop(move || {
+        if let Some(ui) = ui_weak.upgrade() {
+            let model = Rc::new(VecModel::from(file_models));
+            ui.set_mirro_files(ModelRc::from(model));
+        }
+    });
+}
+
+async fn push_files_to_device(
+    serial: String,
+    paths: Vec<std::path::PathBuf>,
+    ui_weak: slint::Weak<AppWindow>,
+) {
+    if paths.is_empty() {
+        return;
+    }
+
+    let count = paths.len();
+    let first_name = paths[0]
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("arquivo")
+        .to_string();
+
+    let msg = if count == 1 {
+        format!("Enviando {} para /mirro...", first_name)
+    } else {
+        format!("Enviando {} arquivos para /mirro...", count)
+    };
+
+    let ui_weak_clone = ui_weak.clone();
+    let msg_clone = msg.clone();
+    let _ = slint::invoke_from_event_loop(move || {
+        if let Some(ui) = ui_weak_clone.upgrade() {
+            ui.set_toast_message(SharedString::from(msg_clone));
+            ui.set_show_toast(true);
+        }
+    });
+
+    let mut success_count = 0;
+    for path in &paths {
+        if let Err(e) = AdbClient::push_to_mirro(&serial, path).await {
+            error!("Erro ao enviar {:?} para {}: {}", path, serial, e);
+        } else {
+            success_count += 1;
+        }
+    }
+
+    // Atualiza a lista de arquivos de /sdcard/mirro
+    update_mirro_files(Some(serial.clone()), ui_weak.clone()).await;
+
+    // Toast de sucesso ou erro
+    let done_msg = if success_count == count {
+        if count == 1 {
+            format!("{} salvo com sucesso em /mirro!", first_name)
+        } else {
+            format!("{} arquivos salvos com sucesso em /mirro!", count)
+        }
+    } else {
+        format!("{}/{} arquivos enviados com sucesso.", success_count, count)
+    };
+
+    let ui_weak_done = ui_weak.clone();
+    let _ = slint::invoke_from_event_loop(move || {
+        if let Some(ui) = ui_weak_done.upgrade() {
+            ui.set_toast_message(SharedString::from(done_msg));
+            ui.set_show_toast(true);
+        }
+    });
+
+    // Oculta toast após 4 segundos
+    let ui_timer = ui_weak.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(tokio::time::Duration::from_millis(4000)).await;
+        let _ = slint::invoke_from_event_loop(move || {
+            if let Some(ui) = ui_timer.upgrade() {
+                ui.set_show_toast(false);
+            }
+        });
+    });
+}
+
 async fn update_devices(
     mirror_mgr: &MirrorManager,
     snapshot_mgr: &SnapshotManager,
+    selected_serial_holder: &Arc<RwLock<Option<String>>>,
     ui_weak: slint::Weak<AppWindow>,
 ) {
     let devices = AdbClient::list_devices().await;
@@ -28,6 +143,15 @@ async fn update_devices(
         .iter()
         .find(|d| d.status == DeviceStatus::Ready)
         .map(|d| d.serial.clone());
+
+    // Assegura que o selected_serial esteja preenchido se houver aparelho conectado
+    let current_selected = {
+        let mut write = selected_serial_holder.write().await;
+        if write.is_none() || !devices.iter().any(|d| write.as_deref() == Some(&d.serial)) {
+            *write = first_ready_serial.clone();
+        }
+        write.clone()
+    };
 
     let device_cards: Vec<DeviceCardData> = devices
         .into_iter()
@@ -70,6 +194,9 @@ async fn update_devices(
         }
     });
 
+    // Atualiza a lista de arquivos de /sdcard/mirro para o aparelho selecionado
+    update_mirro_files(current_selected, ui_weak.clone()).await;
+
     // Se houver aparelho pronto e nenhum screenshot em cache para ele, restaura do disco ou captura
     if let Some(serial) = first_ready_serial {
         if snapshot_mgr.get_cached(&serial).await.is_none() {
@@ -98,7 +225,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         tokio::spawn(async move {
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-            let title_w: Vec<u16> = "Mirro — Controle & Espelhamento Android\0"
+            let title_w: Vec<u16> = "Mirro\0"
                 .encode_utf16()
                 .collect();
             unsafe {
@@ -113,6 +240,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
+    let selected_serial = Arc::new(RwLock::new(None));
     let mirror_manager = MirrorManager::new();
     let snapshot_manager = SnapshotManager::new();
     snapshot_manager.set_ui_weak(ui.as_weak()).await;
@@ -203,15 +331,98 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
+    // Inicializa suporte a Drag & Drop nativo na janela principal do aplicativo
+    {
+        let selected_serial_clone = selected_serial.clone();
+        let ui_weak = ui.as_weak();
+        tools::drag_drop::DragDropManager::init(move |paths| {
+            let selected_serial = selected_serial_clone.clone();
+            let ui_weak = ui_weak.clone();
+            tokio::spawn(async move {
+                let serial_opt = selected_serial.read().await.clone();
+                if let Some(serial) = serial_opt {
+                    push_files_to_device(serial, paths, ui_weak).await;
+                } else {
+                    let _ = slint::invoke_from_event_loop(move || {
+                        if let Some(ui) = ui_weak.upgrade() {
+                            ui.set_toast_message(SharedString::from(
+                                "Conecte um smartphone para transferir arquivos.",
+                            ));
+                            ui.set_show_toast(true);
+                        }
+                    });
+                }
+            });
+        });
+    }
+
+    // Callback de atualização da lista de arquivos de /sdcard/mirro
+    {
+        let selected_serial_clone = selected_serial.clone();
+        let ui_weak = ui.as_weak();
+        ui.on_refresh_mirro_files(move || {
+            let selected_serial = selected_serial_clone.clone();
+            let ui_weak = ui_weak.clone();
+            tokio::spawn(async move {
+                let serial = selected_serial.read().await.clone();
+                update_mirro_files(serial, ui_weak).await;
+            });
+        });
+    }
+
+    // Callback para seleção manual de arquivos do computador para envio ao smartphone
+    {
+        let selected_serial_clone = selected_serial.clone();
+        let ui_weak = ui.as_weak();
+        ui.on_pick_and_send_file(move || {
+            let selected_serial = selected_serial_clone.clone();
+            let ui_weak = ui_weak.clone();
+            tokio::spawn(async move {
+                let serial_opt = selected_serial.read().await.clone();
+                let serial = match serial_opt {
+                    Some(s) => s,
+                    None => {
+                        let _ = slint::invoke_from_event_loop(move || {
+                            if let Some(ui) = ui_weak.upgrade() {
+                                ui.set_toast_message(SharedString::from(
+                                    "Conecte um smartphone para transferir arquivos.",
+                                ));
+                                ui.set_show_toast(true);
+                            }
+                        });
+                        return;
+                    }
+                };
+
+                let files = rfd::FileDialog::new()
+                    .set_title("Selecionar arquivos para enviar ao smartphone (/mirro)")
+                    .pick_files();
+
+                if let Some(paths) = files {
+                    push_files_to_device(serial, paths, ui_weak).await;
+                }
+            });
+        });
+    }
+
     // Callback de seleção de dispositivo na barra lateral
     {
         let snapshot_mgr = snapshot_manager.clone();
+        let selected_serial_clone = selected_serial.clone();
         let ui_weak = ui.as_weak();
         ui.on_device_selected(move |serial| {
             let serial_str = serial.to_string();
             let snapshot_mgr = snapshot_mgr.clone();
+            let selected_serial_clone = selected_serial_clone.clone();
             let ui_weak = ui_weak.clone();
+            let serial_files = serial_str.clone();
+            let ui_weak_files = ui_weak.clone();
             tokio::spawn(async move {
+                {
+                    let mut write = selected_serial_clone.write().await;
+                    *write = Some(serial_str.clone());
+                }
+                update_mirro_files(Some(serial_files), ui_weak_files).await;
                 snapshot_mgr.load_or_capture(serial_str, ui_weak).await;
             });
         });
@@ -221,9 +432,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let mirror_mgr = mirror_manager.clone();
         let snapshot_mgr = snapshot_manager.clone();
+        let selected_serial_clone = selected_serial.clone();
         let ui_weak = ui.as_weak();
         tokio::spawn(async move {
-            update_devices(&mirror_mgr, &snapshot_mgr, ui_weak).await;
+            update_devices(&mirror_mgr, &snapshot_mgr, &selected_serial_clone, ui_weak).await;
         });
     }
 
@@ -231,11 +443,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let mirror_mgr = mirror_manager.clone();
         let snapshot_mgr = snapshot_manager.clone();
+        let selected_serial_clone = selected_serial.clone();
         let ui_weak = ui.as_weak();
         tokio::spawn(async move {
             loop {
                 tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-                update_devices(&mirror_mgr, &snapshot_mgr, ui_weak.clone()).await;
+                update_devices(&mirror_mgr, &snapshot_mgr, &selected_serial_clone, ui_weak.clone()).await;
             }
         });
     }
@@ -244,13 +457,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let mirror_mgr = mirror_manager.clone();
         let snapshot_mgr = snapshot_manager.clone();
+        let selected_serial_clone = selected_serial.clone();
         let ui_weak = ui.as_weak();
         mirror_manager.set_on_ended(move || {
             let mirror_mgr = mirror_mgr.clone();
             let snapshot_mgr = snapshot_mgr.clone();
+            let selected_serial_clone = selected_serial_clone.clone();
             let ui_weak = ui_weak.clone();
             tokio::spawn(async move {
-                update_devices(&mirror_mgr, &snapshot_mgr, ui_weak).await;
+                update_devices(&mirror_mgr, &snapshot_mgr, &selected_serial_clone, ui_weak).await;
             });
         });
     }
@@ -259,13 +474,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let mirror_mgr = mirror_manager.clone();
         let snapshot_mgr = snapshot_manager.clone();
+        let selected_serial_clone = selected_serial.clone();
         let ui_weak = ui.as_weak();
         ui.on_refresh_requested(move || {
             let mirror_mgr = mirror_mgr.clone();
             let snapshot_mgr = snapshot_mgr.clone();
+            let selected_serial_clone = selected_serial_clone.clone();
             let ui_weak = ui_weak.clone();
             tokio::spawn(async move {
-                update_devices(&mirror_mgr, &snapshot_mgr, ui_weak).await;
+                update_devices(&mirror_mgr, &snapshot_mgr, &selected_serial_clone, ui_weak).await;
             });
         });
     }
@@ -274,10 +491,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let mirror_mgr = mirror_manager.clone();
         let snapshot_mgr = snapshot_manager.clone();
+        let selected_serial_clone = selected_serial.clone();
         let ui_weak = ui.as_weak();
         ui.on_mirror_toggled(move |serial, turn_off, always_on_top| {
             let mirror_mgr = mirror_mgr.clone();
             let snapshot_mgr = snapshot_mgr.clone();
+            let selected_serial_clone = selected_serial_clone.clone();
             let ui_weak = ui_weak.clone();
             let serial_str = serial.to_string();
             tokio::spawn(async move {
@@ -309,7 +528,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         });
                     }
                 }
-                update_devices(&mirror_mgr, &snapshot_mgr, ui_weak).await;
+                update_devices(&mirror_mgr, &snapshot_mgr, &selected_serial_clone, ui_weak).await;
             });
         });
     }
@@ -367,6 +586,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let mirror_mgr = mirror_manager.clone();
         let snapshot_mgr = snapshot_manager.clone();
+        let selected_serial_clone = selected_serial.clone();
         let ui_weak = ui.as_weak();
         ui.on_confirm_rename(move |serial, new_name| {
             let serial_str = serial.to_string();
@@ -377,9 +597,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             let mirror_mgr = mirror_mgr.clone();
             let snapshot_mgr = snapshot_mgr.clone();
+            let selected_serial_clone = selected_serial_clone.clone();
             let ui_weak = ui_weak.clone();
             tokio::spawn(async move {
-                update_devices(&mirror_mgr, &snapshot_mgr, ui_weak).await;
+                update_devices(&mirror_mgr, &snapshot_mgr, &selected_serial_clone, ui_weak).await;
             });
         });
     }

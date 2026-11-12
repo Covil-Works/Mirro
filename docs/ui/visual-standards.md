@@ -181,7 +181,8 @@ Este documento centraliza as regras e padrões visuais aplicáveis à interface 
 
 ---
 
-### [visual-standards-012] Notificação Toast e Configuração de Diretório de Capturas
+### [visual-standards-013] Notificação Toast e Configuração de Diretório de Capturas
+
 * **Severidade:** Obrigatório
 * **Descrição:** O aplicativo deve fornecer retorno visual explícito (toast monocromático temporizado) ao registrar uma captura de tela, informando que a imagem foi salva no celular e no computador com o caminho de destino. O painel de configurações deve disponibilizar campo de visualização com truncamento óptico (`overflow: elide`), botão para seleção de pasta nativa via diálogo de sistema, botão para abertura imediata no Windows Explorer e opção de restauração do caminho padrão (`Imagens/Mirro`). É estritamente proibido salvar capturas silenciosamente sem indicar a pasta ao usuário ou utilizar cores chamativas no toast.
 * **Justificativa:** Elimina a incerteza do usuário quanto ao sucesso do print no celular e à localização do arquivo no sistema de arquivos do computador, mantendo a consistência estética com o tema escuro minimalista.
@@ -192,3 +193,19 @@ Este documento centraliza as regras e padrões visuais aplicáveis à interface 
 * **Correto (Padrão Aprovado):**
   - Toast flutuante com fundo escuro translúcido (`#050505fa`), borda branca fina de 1px, ícone monocromático vetorial e temporizador automático de 4 segundos.
   - Seção dedicada nas Configurações com botões "ALTERAR PASTA", "ABRIR NO EXPLORER" e "RESTAURAR PADRÃO".
+
+---
+
+### [visual-standards-014] Painel Lateral de Arquivos em /mirro e Transferência por Arraste (Drag and Drop)
+
+* **Severidade:** Obrigatório
+* **Descrição:** O gerenciamento de arquivos do diretório `/mirro` no smartphone deve ser posicionado à direita do painel de botões de ações na janela principal do aplicativo, mantendo altura unificada (580px) com a moldura do celular e com o painel de navegação. A lista de arquivos e pastas deve ser estritamente monocromática e simplificada, apresentando emblemas técnicos com o formato do item (PASTA, PNG, PDF, APK, etc.) e o nome do arquivo com tratamento de truncamento óptico. A transferência de arquivos deve ser suportada de forma transparente por arrastar e soltar (Drag and Drop) tanto na janela de espelhamento do scrcpy (via `--push-target=/sdcard/mirro/`) quanto na janela do aplicativo (via `WM_DROPFILES` e `DragAcceptFiles`), enviando diretamente para `/sdcard/mirro/` após assegurar a existência da pasta no sistema de arquivos do Android.
+* **Justificativa:** Proporciona transferência de arquivos simplificada e rápida sem a necessidade de comandos manuais no terminal ou janelas modais complexas de gerenciamento, mantendo equilíbrio e harmonia geométrica na composição de 3 colunas monocromáticas da área de trabalho.
+* **Incorreto (Anti-padrão):**
+  - Salvar arquivos arrastados em pastas genéricas como `/sdcard/Download/` sem centralizar em `/mirro`.
+  - Exibir ícones de pastas ou arquivos coloridos ou emojis na lista de itens.
+  - Falhar silenciosamente se o diretório `/sdcard/mirro` ainda não tiver sido criado no dispositivo.
+* **Correto (Padrão Aprovado):**
+  - Assegurar a criação automática de `/sdcard/mirro` antes do espelhamento ou da transferência de arquivos.
+  - Renderizar painel lateral dedicado com 250px de largura e 580px de altura, exibindo emblemas técnicos monocromáticos de formato (`file_type`) e nome do arquivo.
+  - Disponibilizar botões de ação rápida ("ATUALIZAR" e "ENVIAR") e suporte a Drag and Drop nativo em ambas as janelas.
